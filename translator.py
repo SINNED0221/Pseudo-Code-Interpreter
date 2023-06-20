@@ -1,3 +1,5 @@
+import string
+
 # Token types
 TT_INT		= 'INT'
 TT_FLOAT    = 'FLOAT'
@@ -5,13 +7,101 @@ TT_PLUS     = 'PLUS'
 TT_MINUS    = 'MINUS'
 TT_MUL      = 'MUL'
 TT_DIV      = 'DIV'
+TT_COMMENT  = 'COMMENT'
 TT_LPAREN   = 'LPAREN'
 TT_RPAREN   = 'RPAREN'
-TT_POW      = 'POW'
+TT_CARET    = 'CARET'
+TT_COMBINE  = 'COMBINE'
+TT_ARROW    = 'ARROW'
+TT_EQ       = 'EQ'
+TT_GT       = 'GT'
+TT_LT       = 'LT'
+TT_LTE      = 'LTE'
+TT_GTE      = 'GTE'
+TT_NE       = 'NE'
+TT_SHARP    = 'SHARP'
+TT_KEYWORD  = 'KEYWORD'
+TT_ID       = 'ID'
 
 # Constants for dictionary
 digits = '1234567890'
+letters = string.ascii_letters
+lettersAndDigits = letters + digits
 
+# keywords of operators
+keywords = [   
+    'OF',
+'AND',
+'APPEND',
+'ARRAY',
+'BOOLEAN',
+'BYREF',
+'BYVAL',
+'CALL',
+'CASE',
+'CHAR',
+'CLASS',
+'CLOSEFILE',
+'CONSTANT',
+'DATE',
+'DECLARE',
+'DIV',
+'ELSE',
+'ENDCASE',
+'ENDCLASS',
+'ENDFUNCTION',
+'ENDIF',
+'ENDPROCEDURE',
+'ENDTYPE',
+'ENDWHILE',
+'EOF',
+'FALSE',
+'FOR',
+'TO',
+'FUNCTION',
+'GETRECORD',
+'IF',
+'INHERITS',
+'INPUT',
+'INT',
+'INTEGER',
+'LCASE',
+'LENGTH',
+'MID',
+'MOD',
+'NEXT',
+'NEW',
+'NOT',
+'OPENFILE',
+'OR',
+'OTHERWISE',
+'OUTPUT',
+'PROCEDURE',
+'PRIVATE',
+'PUBLIC',
+'PUTRECORD',
+'RAND',
+'RANDOM',
+'READ',
+'READFILE',
+'REAL',
+'REPEAT',
+'RETURN',
+'RETURNS',
+'RIGHT',
+'SEEK',
+'STEP',
+'STRING',
+'SUPER',
+'THEN',
+'TRUE',
+'TYPE',
+'UCASE',
+'UNTIL',
+'WHILE',
+'WRITE',
+'WRITEFILE',
+]
 
 class Error:
     def __init__(self, pos_start, pos_end, error_name, details):
@@ -49,7 +139,6 @@ class lexer:
 
     def next(self):
         self.pos += 1
-
         if self.pos< len(self.text):
             self.char = self.text[self.pos]
         else:
@@ -73,17 +162,26 @@ class lexer:
         else:
             return token (TT_FLOAT, float(numString))    
 
+    def makeId(self):
+        idString = ''
+        while self.char != None and self.char in lettersAndDigits + '_':
+            idString += self.char
+            self.next()
+        if idString in keywords:
+            return token (TT_KEYWORD, idString)
+        else:
+            return token (TT_ID, idString)        
 
     def makeToken(self):
         tokens = []
         self.next()
         while self.char != None:
             if self.char in ' \t':
-                
                 self.next()
             elif self.char in digits:
-                
                 tokens.append(self.makeNumber())
+            elif self.char in letters:
+                tokens.append(self.makeId())
             elif self.char == '+':
                 tokens.append(token(TT_PLUS))
                 self.next()
@@ -94,8 +192,12 @@ class lexer:
                 tokens.append(token(TT_MUL))
                 self.next()
             elif self.char == '/':
-                tokens.append(token(TT_DIV))
                 self.next()
+                if self.char == '/':
+                    tokens.append(token(TT_COMMENT))
+                    self.next()
+                else:
+                    tokens.append(token(TT_DIV))
             elif self.char == '(':
                 tokens.append(token(TT_LPAREN))
                 self.next()
@@ -103,11 +205,43 @@ class lexer:
                 tokens.append(token(TT_RPAREN))
                 self.next()
             elif self.char == '^':
-                tokens.append(token(TT_POW))
+                tokens.append(token(TT_CARET))
                 self.next()
+            elif self.char == '&':
+                tokens.append(token(TT_COMBINE))
+                self.next()    
+            elif self.char == '=':
+                tokens.append(token(TT_EQ))
+                self.next()
+            elif self.char == '←':
+                tokens.append(token(TT_ARROW))
+                self.next()
+            elif self.char == '#':
+                tokens.append(token(TT_SHARP))
+                self.next()
+            elif self.char == '<':
+                self.next()
+                if self.char == '=':
+                    tokens.append(token(TT_LTE))
+                    self.next()
+                elif self.char == '>':
+                    tokens.append(token(TT_NE))
+                    self.next()
+                elif self.char == '-':
+                    tokens.append(token(TT_ARROW))
+                    self.next()
+                else:
+                    tokens.append(token(TT_LT))
+            elif self.char == '>':
+                self.next()
+                if self.char == '=':
+                    tokens.append(token(TT_GTE))
+                    self.next()
+                else:
+                    tokens.append(token(TT_GT))
             else:
                 pos_start = self.pos.copy()
-                self.advance()
+                self.next()
                 return [], IllegalCharError(pos_start, self.pos, "'" + self.char + "'")    
         return tokens, None
 
@@ -116,5 +250,3 @@ def run(text):
     tokens, error = loclexer.makeToken()
 
     return tokens, error        
-
-print(run("1.2+1*4"))
