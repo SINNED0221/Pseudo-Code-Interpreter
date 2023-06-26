@@ -7,7 +7,16 @@ class interpreter:
         self.functions = {}
         self.procedures = {}
 
-        self.keywords = {
+        self.digits = "1234567890"
+        self.operators = [
+            "+",
+            "-",
+            "*",
+            "/",
+            "MOD",
+            "DIV"
+        ]
+        self.keywords = [
             'OF',
             'AND',
             'APPEND',
@@ -23,7 +32,7 @@ class interpreter:
             'CONSTANT',
             'DATE',
             'DECLARE',
-            'DIV',
+            #'DIV',
             'ELSE',
             'ENDCASE',
             'ENDCLASS',
@@ -43,10 +52,10 @@ class interpreter:
             'INPUT',
             'INT',
             'INTEGER',
-            'LCASE',
-            'LENGTH',
-            'MID',
-            'MOD',
+            #'LCASE',
+            #'LENGTH',
+            #'MID',
+            #'MOD',
             'NEXT',
             'NEW',
             'NOT',
@@ -78,8 +87,8 @@ class interpreter:
             'UNTIL',
             'WHILE',
             'WRITE',
-            'WRITEFILE',
-        }
+            'WRITEFILE'
+        ]
     
     def run(self, code):
         lines = code.split("\n")
@@ -110,6 +119,110 @@ class interpreter:
         elif line.startswith("DECLARE"):
             self.exeDeclare(line, lineNo)
 
+    def evalExpr(self, expression, line, lineNo):
+        # Remove any whitespace from the expression
+        expression = expression.replace(" ", "")
+
+        # Operator precedence dictionary
+        precedence = {
+            '+': 1,
+            '-': 1,
+            '*': 2,
+            '/': 2,
+            'MOD': 3,
+            'DIV': 3
+        }
+
+        # Stack to hold operators and values
+        operatorStack = []
+        valueStack = []
+
+        # Helper functions for arithmetic operations
+        def applyOperator():
+            operator = operatorStack.pop()
+            operand2 = valueStack.pop()
+            operand1 = valueStack.pop()
+
+            if operator == '+':
+                valueStack.append(operand1 + operand2)
+            elif operator == '-':
+                valueStack.append(operand1 - operand2)
+            elif operator == '*':
+                valueStack.append(operand1 * operand2)
+            elif operator == '/':
+                valueStack.append(operand1 / operand2)
+            elif operator == 'MOD':
+                valueStack.append(operand1 % operand2)
+            elif operator == 'DIV':
+                valueStack.append(operand1 // operand2)
+
+        # Iterate through each character in the expression
+        pos = -1
+        while pos < len(expression)-1:
+            pos += 1
+            char = expression[pos]
+            if char.isdigit():
+                # If the character is a digit, accumulate the number
+                currentValue = char
+                while (pos + 1 < len(expression) and expression[pos + 1] in self.digits+"."):
+                    currentValue += expression[pos + 1]
+                    char = expression[pos + 1]
+                    pos +=1
+
+                # Push the number to the value stack
+                valueStack.append(int(currentValue))
+
+            if char.isalpha():
+                id = char
+                while (expression.index(char) + 1 < len(expression) and 
+                       (expression[expression.index(char) + 1].isalpha() or expression[expression.index(char) + 1] in self.digits+"_.")):
+                    id += expression[expression.index(char) + 1]
+                    char = expression[expression.index(char) + 1]
+                    if id in precedence.keys():
+                        break
+                pos += (len(id)-1)
+                if id in precedence.keys():
+                    while (operatorStack and operatorStack[-1] != '(' and
+                        precedence[id] <= precedence.get(operatorStack[-1], 0)):
+                        # Apply operators with higher or equal precedence from the stack
+                        applyOperator()
+                    operatorStack.append(id)
+                elif id in self.keywords:
+                    self.error("invaSyn", lineNo, line, int((int(line.index(id)+len(id))/2)), None)
+                elif id in self.identifiers:
+                    valueStack.append(self.getValue())
+                else:
+                    self.error("nameErr", lineNo, line, int((int(line.index(id))+len(id)/2)), id)
+
+            elif char == '(':
+                # If the character is an opening parenthesis, push it to the operator stack
+                operatorStack.append(char)
+
+            elif char == ')':
+                # If the character is a closing parenthesis
+                while operatorStack and operatorStack[-1] != '(':
+                    # Apply operators until the opening parenthesis is encountered
+                    applyOperator()
+
+                if operatorStack and operatorStack[-1] == '(':
+                    # Pop the opening parenthesis from the stack
+                    operatorStack.pop()
+
+            elif char in precedence.keys():
+                # If the character is an operator
+                while (operatorStack and operatorStack[-1] != '(' and precedence[char] <= precedence.get(operatorStack[-1], 0)):
+                    # Apply operators with higher or equal precedence from the stack
+                    applyOperator()
+                operatorStack.append(char)
+
+        # Apply any remaining operators in the stack
+        while operatorStack:
+            applyOperator()
+
+        # The final value in the value stack is the result
+        return valueStack[0]
+
+
     def exeOutput(self, line, lineNo):
         if line[0:line.find(" ")] != "OUTPUT":
             self.error("invaSyn", lineNo, line, int(line.find(" ")/2), None)
@@ -119,40 +232,32 @@ class interpreter:
             tokens = expression.split(",")
             for token in tokens:
                 token = token.strip()
-                if token.startswith('"'):
-                    if token.endswith('"'):
-                        message += token[1:len(token)-1]
-                    else:
-                        self.error("invaSyn", lineNo, line, int(line.find(token, 7)+len(token)), None)
-                elif token.startswith("'"):
-                    if token.endswith("'"):
-                        message += token[1:len(token)-1]
-                    else:
-                        self.error("invaSyn", lineNo, line, int(line.find(token, 7)+len(token)), None)
-                elif token in self.keywords:
-                    self.error("invaSyn", lineNo, line, int(line.find(token, 7)), None)
-                elif token in self.identifiers:
-                    self.getValue(token)
+                if any(op in token for op in self.operators):
+                    message += str(self.evalExpr(token, line, lineNo))
+                elif "&" in token:
+                    message += self.strComb(token)
+                elif all(n in self.digits+"." for n in token):
+                    message += str(token)
                 else:
-                    self.error("nameErr", lineNo, line, int(line.find(token, 7)), None)
+                    message += self.stringForm(token, lineNo, line)[1:-1]
             print(message)
 
     def stringForm(self, token, lineNo, line):
         string = ""
         if token.startswith('"'):
             if token.endswith('"'):
-                string += token[1:len(token)-1]
+                string = token
             else:
                 self.error("invaSyn", lineNo, line, int(line.find(token, 7)+len(token)), None)
         elif token.startswith("'"):
             if token.endswith("'"):
-                string += token[1:len(token)-1]
+                string = token
             else:
                 self.error("invaSyn", lineNo, line, int(line.find(token, 7)+len(token)), None)
         elif token in self.keywords:
-            self.error("invaSyn", lineNo, line, int(line.find(token, 7)), None)
+            self.error("invaSyn", lineNo, line, int((int(line.find(token, 7)+len(token))/2)), None)
         elif token in self.identifiers:
             self.getValue()
         else:
-            self.error("nameErr", lineNo, line, int(line.find(token, 7)), None)
+            self.error("nameErr", lineNo, line, int((int(line.find(token, 7)+len(token))/2)), None)
         return string

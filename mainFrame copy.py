@@ -1,6 +1,7 @@
 import PseudoCodeInterpreter as pci
+import sys
 
 inter = pci.interpreter()
-while True:
-    line = input("pseudo>")
-    inter.run(line)
+droppedFile = sys.argv[1] 
+print(droppedFile)
+input
