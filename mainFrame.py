@@ -1,8 +1,3 @@
-import translator
+import PseudoCodeInterpreter as pci
 
-while True:
-    text = input('pseudo > ')
-    result, error = translator.run(text)
-
-    if error: print(error.as_string())
-    else: print(result)
+inter = pci.interpreter()
