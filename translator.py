@@ -119,6 +119,10 @@ class IllegalCharError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, 'Illegal Character', details)
 
+class inValidSyntax(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, 'Invalid Syntax', details)
+
 
 class token :
     def __init__(self, dataType, value=None):
@@ -244,6 +248,23 @@ class lexer:
                 self.next()
                 return [], IllegalCharError(pos_start, self.pos, "'" + self.char + "'")    
         return tokens, None
+
+class parser:
+    def __init__(self, tokens):
+        self.pos = -1
+        self.tokens = tokens
+        self.curToken = None
+    
+    def next(self):
+        self.pos += 1
+        if self.pos > len(self.tokens):
+            self.curToken = token(None)
+        else:
+            self.curToken = self.tokens[self.pos]
+    
+
+        
+
 
 def run(text):
     loclexer = lexer(text)

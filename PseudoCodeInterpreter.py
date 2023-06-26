@@ -95,6 +95,8 @@ class interpreter:
             printRed ("\t" + " "*pos + "^" )
         elif errType == "nameErr":
             printRed ("Name error: <" + str(detail) + "> referenced before assigned at line " + str(lineNo))
+        elif errType == "typeErr":
+            printRed ("Type error: <" + str(detail) + "> referenced before assigned at line " + str(lineNo))
         
         quit()
 
@@ -135,20 +137,22 @@ class interpreter:
                     self.error("nameErr", lineNo, line, int(line.find(token, 7)), None)
             print(message)
 
-    def stringExpression(self, token, lineNo, line):
+    def stringForm(self, token, lineNo, line):
+        string = ""
         if token.startswith('"'):
             if token.endswith('"'):
-                message += token[1:len(token)-1]
+                string += token[1:len(token)-1]
             else:
                 self.error("invaSyn", lineNo, line, int(line.find(token, 7)+len(token)), None)
         elif token.startswith("'"):
             if token.endswith("'"):
-                message += token[1:len(token)-1]
+                string += token[1:len(token)-1]
             else:
                 self.error("invaSyn", lineNo, line, int(line.find(token, 7)+len(token)), None)
         elif token in self.keywords:
-                self.error("invaSyn", lineNo, line, int(line.find(token, 7)), None)
+            self.error("invaSyn", lineNo, line, int(line.find(token, 7)), None)
         elif token in self.identifiers:
-            self.getValue(token)
+            self.getValue()
         else:
             self.error("nameErr", lineNo, line, int(line.find(token, 7)), None)
+        return string
