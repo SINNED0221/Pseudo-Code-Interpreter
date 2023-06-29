@@ -106,17 +106,19 @@ class interpreter:
             self.executeLine(line.strip(), lineNo)
             lineNo += 1
     
-    def error(self, errType, lineNo, line, pos, detail, description):
+    def error(self, errType, lineNo, line, pos, detail = None, description = None):
         if errType == "invaSyn":
             printRed ("Syntax error: at line " + str(lineNo))
             printRed ("\t" + str(line))
             printRed ("\t" + " "*pos + "^" )
-            printRed (detail)
+            if description:
+                 printRed (description)
         elif errType == "nameErr":
             printRed ("Name error: <" + str(detail) + "> referenced before assigned at line " + str(lineNo))
         elif errType == "typeErr":
             printRed ("Type error: <" + str(detail) + "> is unexpected type at line " + str(lineNo))
-            printRed (description + " expected")
+            if description:
+                printRed (description + " expected")
         
         quit()
 
@@ -177,7 +179,7 @@ class interpreter:
                 else:
                     valueStack.append(int(currentValue))
 
-            if char.isalpha():
+            elif char.isalpha():
                 id = char
                 # The first char of a identifier can only be a letter but it can be followed by _ and number
                 while (expression.index(char) + 1 < len(expression) and 
@@ -202,7 +204,7 @@ class interpreter:
                 elif id in self.keywords:
                     self.error("invaSyn", lineNo, line, int((int(line.index(id)+len(id))/2)), None)
                 elif id in self.identifiers:
-                    valueStack.append(self.getValue(id))
+                    valueStack.append(self.getValue(id, lineNo, line))
                 else:
                     self.error("nameErr", lineNo, line, int((int(line.index(id))+len(id)/2)), id)
 
@@ -227,95 +229,24 @@ class interpreter:
 
     def strComb(self, expression, lineNo, line):
         tokens = expression.split("&")
-        string = ""
+        string = '"'
         for token in tokens:
             token = token.strip()
-            string += self.stringForm(token, lineNo, line)[1:-1]
+            if self.getType(token, lineNo, line) == "STRING":
+                string += self.getString(token, lineNo, line)
+        string += '"'
         return string
 
     def exeOutput(self, line, lineNo):
         if line[0:line.find(" ")] != "OUTPUT":  # If the OUTPUT is typed wrong, call invalSyn
-            self.error("invaSyn", lineNo, line, int(line.find(" ")/2), None)
+            self.error("invaSyn", lineNo, line, 6, None, "Missing Space")
         else:
             message = ""
             expression = line[line.find(" ") : len(line)]  # Get everything behind OUTPUT
             tokens = expression.split(",")  # Seprate by commas
             for token in tokens:
-                token = token.strip()
-                tokenWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
-                pos = -1
-
-                while pos < len(token)-1:
-                    pos += 1
-                    c = token[pos]
-                    if c == '"' and pos < len(token)-1:  # If one quote is found, delete all until next one or to end
-                        tokenWOLiteral += c
-                        pos += 1
-                        c = token[pos]
-                        while c != '"' and pos < len(token)-1:
-                            pos+=1
-                            c = token[pos]
-                        if c == '"':  # add if the last quote is found
-                            tokenWOLiteral += c
-                    elif c == "'" and pos < len(token)-1:  # If one quote is found, delete all until next one or to end
-                        tokenWOLiteral += c
-                        pos += 1
-                        c = token[pos]
-                        while c != "'" and pos < len(token)-1:
-                            pos += 1
-                            c = token[pos]
-                        if c == "'":  # add if the last quote is found
-                            tokenWOLiteral += c
-                    else:
-                        tokenWOLiteral += c
-
-                if any(op in tokenWOLiteral for op in self.operators):  # apart from string literal, there is a operator
-                    message += str(self.evalExpr(token, line, lineNo))
-                elif "&" in tokenWOLiteral:  # apart from string literal, there is a &
-                    message += self.strComb(token, lineNo, line)
-                elif all(n in self.digits+"." for n in token):  # it is a number
-                    message += str(token)
-                else:  # string literal or identifier
-                    message += self.stringForm(token, lineNo, line)[1:-1]
+                message += self.getString(token, lineNo, line)
             print(message)
-
-    def stringForm(self, token, lineNo, line):  # deal with string literal and identifier to give a string literal as result
-        string = ""
-        if token.startswith('"'):
-            pos = 0
-            quoteCount = 1
-            while pos < len(token)-1 and quoteCount < 2:
-                pos += 1
-                if token[pos] == '"':
-                    quoteCount += 1
-            if quoteCount < 2:
-                self.error("invaSyn", lineNo, line, int(line.find(token, 7)+pos+1), None)
-            elif pos < len(token)-1:  # if quote is not at the end
-                self.error("invaSyn", lineNo, line, int(line.find(token, 7)+pos+1), None)
-            else:
-                string = token
-        elif token.startswith("'"):
-            pos = 0
-            quoteCount = 1
-            while pos < len(token)-1 and quoteCount < 2:
-                pos += 1
-                if token[pos] == "'":
-                    quoteCount += 1
-            if quoteCount < 2:
-                self.error("invaSyn", lineNo, line, int(line.find(token, 7)+pos+1), None)
-            elif pos < len(token)-1:  # if quote is not at the end
-                self.error("invaSyn", lineNo, line, int(line.find(token, 7)+pos+1), None)
-            elif pos > 2:  # single quote should only contian char
-                self.error("typeErr", lineNo, line, int(line.find(token, 7)+1), token, "CHAR")
-            else:
-                string = token
-        elif token in self.keywords:
-            self.error("invaSyn", lineNo, line, int((int(line.find(token, 7)+len(token))/2)), None)
-        elif token in self.identifiers:
-            string = self.getValue(token)
-        else:
-            self.error("nameErr", lineNo, line, int((int(line.find(token, 7)+len(token))/2)), None)
-        return string
     
     def exeDeclare(self, line, lineNo):
         if line[0:line.find(" ")] != "DECLARE":  # If the DECLARE is typed wrong, call invalSyn
@@ -346,7 +277,69 @@ class interpreter:
             self.error("invaSyn", lineNo, line, int(line.find(type)/2), "Invalid Data Type")
         
     def getValue(self, identifier, lineNo, line):
-        if identifier in (self.variables).keys():
+        identifier = identifier.strip()
+        identifierWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
+        pos = -1
+        while pos < len(identifier)-1:
+            pos += 1
+            c = identifier[pos]
+            if c == '"' and pos < len(identifier)-1:  # If one quote is found, delete all until next one or to end
+                identifierWOLiteral += c
+                pos += 1
+                c = identifier[pos]
+                while c != '"' and pos < len(identifier)-1:
+                    pos+=1
+                    c = identifier[pos]
+                if c == '"':  # add if the last quote is found
+                    identifierWOLiteral += c
+            elif c == "'" and pos < len(identifier)-1:  # If one quote is found, delete all until next one or to end
+                identifierWOLiteral += c
+                pos += 1
+                c = identifier[pos]
+                while c != "'" and pos < len(identifier)-1:
+                    pos += 1
+                    c = identifier[pos]
+                if c == "'":  # add if the last quote is found
+                    identifierWOLiteral += c
+            else:
+                identifierWOLiteral += c
+        if any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
+            return self.evalExpr(identifier, line, lineNo)
+        elif "&" in identifierWOLiteral:  # apart from string literal, there is a &
+            return self.strComb(identifier, lineNo, line)
+        elif all(n in self.digits+"." for n in identifier):  # it is a number
+            return identifier
+        elif identifier.startswith('"'):
+            pos = 0
+            quoteCount = 1
+            while pos < len(identifier)-1 and quoteCount < 2:
+                pos += 1
+                if identifier[pos] == '"':
+                    quoteCount += 1
+            if quoteCount < 2:
+                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+            elif pos < len(identifier)-1:  # if quote is not at the end
+                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+            else:
+                return identifier
+        elif identifier.startswith("'"):
+            pos = 0
+            quoteCount = 1
+            while pos < len(identifier)-1 and quoteCount < 2:
+                pos += 1
+                if identifier[pos] == "'":
+                    quoteCount += 1
+            if quoteCount < 2:
+                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+            elif pos < len(identifier)-1:  # if quote is not at the end
+                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+            elif pos > 2:  # single quote should only contian char
+                self.error("typeErr", lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
+            else:
+                return identifier
+        elif identifier in self.keywords:
+            self.error("invaSyn", lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
+        elif identifier in (self.variables).keys():
             return (self.variables[identifier]).getVarValue()
         elif identifier in (self.functions).keys():
             return (self.variables[identifier]).getFunValue()
@@ -354,14 +347,119 @@ class interpreter:
             self.error("invaSyn", lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
         else:
             self.error("nameErr", lineNo, line, int(line.find(identifier)/2), identifier)
-        
-    def getType(self, identifier, lineNo, line):
-        if identifier in (self.variables).keys():
-            return (self.variables[identifier]).getVarType()
+
+    def getString(self, identifier, lineNo, line):
+        identifier = identifier.strip()
+        identifierWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
+        pos = -1
+        while pos < len(identifier)-1:
+            pos += 1
+            c = identifier[pos]
+            if c == '"' and pos < len(identifier)-1:  # If one quote is found, delete all until next one or to end
+                identifierWOLiteral += c
+                pos += 1
+                c = identifier[pos]
+                while c != '"' and pos < len(identifier)-1:
+                    pos+=1
+                    c = identifier[pos]
+                if c == '"':  # add if the last quote is found
+                    identifierWOLiteral += c
+            elif c == "'" and pos < len(identifier)-1:  # If one quote is found, delete all until next one or to end
+                identifierWOLiteral += c
+                pos += 1
+                c = identifier[pos]
+                while c != "'" and pos < len(identifier)-1:
+                    pos += 1
+                    c = identifier[pos]
+                if c == "'":  # add if the last quote is found
+                    identifierWOLiteral += c
+            else:
+                identifierWOLiteral += c
+        if any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
+            return str(self.evalExpr(identifier, line, lineNo))
+        elif "&" in identifierWOLiteral:  # apart from string literal, there is a &
+            return self.strComb(identifier, lineNo, line)[1:-1]
+        elif all(n in self.digits+"." for n in identifier):  # it is a number
+            return str(identifier)
+        elif identifier.startswith('"'):
+            pos = 0
+            quoteCount = 1
+            while pos < len(identifier)-1 and quoteCount < 2:
+                pos += 1
+                if identifier[pos] == '"':
+                    quoteCount += 1
+            if quoteCount < 2:
+                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+            elif pos < len(identifier)-1:  # if quote is not at the end
+                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+            else:
+                return identifier[1:-1]
+        elif identifier.startswith("'"):
+            pos = 0
+            quoteCount = 1
+            while pos < len(identifier)-1 and quoteCount < 2:
+                pos += 1
+                if identifier[pos] == "'":
+                    quoteCount += 1
+            if quoteCount < 2:
+                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+            elif pos < len(identifier)-1:  # if quote is not at the end
+                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+            elif pos > 2:  # single quote should only contian char
+                self.error("typeErr", lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
+            else:
+                return identifier[1:-1]
+        elif identifier in self.keywords:
+            self.error("invaSyn", lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
+        elif identifier in (self.variables).keys():
+            return self.getString((self.variables[identifier]).getVarValue(), lineNo, line)
         elif identifier in (self.functions).keys():
-            return (self.variables[identifier]).getFunType()
+            return self.getString((self.functions[identifier]).getFunValue(), lineNo, line)
         elif identifier in (self.procedures).keys():
             self.error("invaSyn", lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
+        else:
+            self.error("nameErr", lineNo, line, int(line.find(identifier)/2), identifier)
+
+    def getType(self, identifier, lineNo, line):
+        identifier = identifier.strip()
+        identifierWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
+        pos = -1
+        while pos < len(identifier)-1:
+            pos += 1
+            c = identifier[pos]
+            if c == '"' and pos < len(identifier)-1:  # If one quote is found, delete all until next one or to end
+                identifierWOLiteral += c
+                pos += 1
+                c = identifier[pos]
+                while c != '"' and pos < len(identifier)-1:
+                    pos+=1
+                    c = identifier[pos]
+                if c == '"':  # add if the last quote is found
+                    identifierWOLiteral += c
+            elif c == "'" and pos < len(identifier)-1:  # If one quote is found, delete all until next one or to end
+                identifierWOLiteral += c
+                pos += 1
+                c = identifier[pos]
+                while c != "'" and pos < len(identifier)-1:
+                    pos += 1
+                    c = identifier[pos]
+                if c == "'":  # add if the last quote is found
+                    identifierWOLiteral += c
+            else:
+                identifierWOLiteral += c
+        if any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
+            if self.evalExpr(identifier, line, lineNo) == 'float':
+                return "REAL"
+            else:
+                return "INTEGER"
+        elif "&" in identifierWOLiteral:  # apart from string literal, there is a &
+            self.strComb(identifier, lineNo, line)
+            return "STRING"
+        elif all(n in self.digits for n in identifier):  # it is a number
+            if "." in identifier:
+                return "REAL"
+            else:
+                return "INTEGER"
         elif identifier.startswith('"'):
             pos = 0
             quoteCount = 1
@@ -389,10 +487,17 @@ class interpreter:
             elif pos > 2:  # single quote should only contian char
                 self.error("typeErr", lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
             else:
-                return "STRING"
+                return "CHAR"
+        elif identifier in self.keywords:
+            self.error("invaSyn", lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
+        elif identifier in (self.variables).keys():
+            return (self.variables[identifier]).getVarType()
+        elif identifier in (self.functions).keys():
+            return (self.variables[identifier]).getFunType()
+        elif identifier in (self.procedures).keys():
+            self.error("invaSyn", lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
         else:
             self.error("nameErr", lineNo, line, int(line.find(identifier)/2), identifier)
-    
 
 class variable:
     def __init__(self, identifier, type, value = None):
