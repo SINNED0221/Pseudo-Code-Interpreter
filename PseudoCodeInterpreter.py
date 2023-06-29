@@ -4,6 +4,7 @@ class interpreter:
     def __init__(self):
         self.identifiers = []
         self.variables = {}
+        self.constants = {}
         self.arrays = {}
         self.functions = {}
         self.procedures = {}
@@ -131,13 +132,27 @@ class interpreter:
         
         quit()
 
+    def isValidChar(self, id):
+        return id.isalpha() or id in self.digits + "_"
+
     def executeLine(self, line, lineNo):
         if "//" in line:  # get rid of comments
             line = line[0 : line.find("//")]
-        if line.startswith("OUTPUT"):
+        line.replace("<-", "←")
+        pos = -1
+        identifier = ""
+        char = identifier[0]
+        while self.isValidChar(char) and pos < len(line)-1:
+            identifier += char
+        if identifier == "OUTPUT":
             self.exeOutput(line, lineNo)
-        elif line.startswith("DECLARE"):
+        elif identifier == "DECLARE":
             self.exeDeclare(line, lineNo)
+        elif identifier == "CONSTANT":
+            self.exeConstant(line, lineNo)
+        
+        elif identifier in self.identifiers:
+            self.exeAssign(line, lineNo)
 
 
 
@@ -179,9 +194,79 @@ class interpreter:
                 self.arrays[identifier] = array(identifier, type)
         else:
             self.error("invaSyn", lineNo, line, int(line.find(type)/2), "Invalid Data Type")
-        
+
+    def exeConstants(self):
+        pass
+
+    def exeAssign(self, line, lineNo):
+        pass
+
+
+    def removeLiteral(self, token, lineNo, line):
+        token = token.strip()
+        temp = token
+        token = token.replace(" ", "")
+        tokenWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
+        pos = -1
+        while pos < len(token)-1:
+            pos += 1
+            c = token[pos]
+            if c == '"' and pos < len(token)-1:  # If one quote is found, delete all until next one or to end
+                tokenWOLiteral += c
+                pos += 1
+                c = token[pos]
+                while c != '"' and pos < len(token)-1:
+                    pos+=1
+                    c = token[pos]
+                if c == '"':  # add if the last quote is found
+                    tokenWOLiteral += c
+            elif c == "'" and pos < len(token)-1:  # If one quote is found, delete all until next one or to end
+                tokenWOLiteral += c
+                pos += 1
+                c = token[pos]
+                while c != "'" and pos < len(token)-1:
+                    pos += 1
+                    c = token[pos]
+                if c == "'":  # add if the last quote is found
+                    tokenWOLiteral += c
+            # check for parantesys behind a function
+            elif c == "(" and self.isValidChar(token[pos-1]):
+                count = 1
+                tokenWOLiteral += c
+                pos += 1
+                c = token[pos]
+                while count > 0 and pos < len(token)-1:
+                    pos += 1
+                    c = token[pos]
+                    if c == "(":
+                        count += 1
+                    elif c == ")":
+                        count -= 1
+                if c == ")":  
+                    tokenWOLiteral += c
+            # check for array
+            elif c == "[" and self.isValidChar(token[pos-1]):
+                count = 1
+                tokenWOLiteral += c
+                pos += 1
+                c = token[pos]
+                while count > 0 and pos < len(token)-1:
+                    pos += 1
+                    c = token[pos]
+                    if c == "[":
+                        count += 1
+                    elif c == "]":
+                        count -= 1
+                if c == "]": 
+                    tokenWOLiteral += c
+            else:
+                tokenWOLiteral += c
+        token = temp
+
     def getValue(self, identifier, lineNo, line):
         identifier = identifier.strip()
+        temp = identifier
+        identifier = identifier.replace(" ", "")
         identifierWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
         pos = -1
         while pos < len(identifier)-1:
@@ -205,8 +290,18 @@ class interpreter:
                     c = identifier[pos]
                 if c == "'":  # add if the last quote is found
                     identifierWOLiteral += c
+            elif c == "(" and (identifier[pos-1].isalpha() or identifier[pos-1] in self.digits + "_"):
+                identifierWOLiteral += c
+                pos += 1
+                c = identifier[pos]
+                while c != ")" and pos < len(identifier)-1:
+                    pos += 1
+                    c = identifier[pos]
+                if c == ")":  # add if the last quote is found
+                    identifierWOLiteral += c
             else:
                 identifierWOLiteral += c
+        identifier = temp
         if any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
             return self.evalExpr(identifier, line, lineNo)
         elif "&" in identifierWOLiteral:  # apart from string literal, there is a &
