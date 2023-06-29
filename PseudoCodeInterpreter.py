@@ -102,7 +102,7 @@ class interpreter:
 
     def run(self, code):
         lines = code.split("\n")
-        lineNo = 0
+        lineNo = 1
         for line in lines:
             self.executeLine(line.strip(), lineNo)
             lineNo += 1
@@ -138,11 +138,15 @@ class interpreter:
     def executeLine(self, line, lineNo):
         if "//" in line:  # get rid of comments
             line = line[0 : line.find("//")]
-        line.replace("<-", "←")
+        line = line.replace("<-", "←")
         pos = -1
         identifier = ""
-        char = identifier[0]
-        while self.isValidChar(char) and pos < len(line)-1:
+        char = line[0]
+        while pos < len(line)-1:
+            pos += 1
+            char = line[pos]
+            if not self.isValidChar(char):
+                break
             identifier += char
         if identifier == "OUTPUT":
             self.exeOutput(line, lineNo)
@@ -152,7 +156,7 @@ class interpreter:
             self.exeConstant(line, lineNo)
         
         elif identifier in self.identifiers:
-            self.exeAssign(line, lineNo)
+            self.exeAssign(lineNo, line)
 
 
 
@@ -162,7 +166,7 @@ class interpreter:
         else:
             message = ""
             expression = line[line.find(" ") : len(line)]  # Get everything behind OUTPUT
-            tokens = expression.split(",")  # Seprate by commas
+            tokens = self.commaSplit(expression, lineNo, line)
             for token in tokens:
                 message += self.getString(token, lineNo, line)
             print(message)
@@ -198,14 +202,35 @@ class interpreter:
     def exeConstants(self):
         pass
 
-    def exeAssign(self, line, lineNo):
-        pass
+    def exeAssign(self, lineNo, line):
+        leftStr = line[0: line.find("←")]
+        rightStr = line[line.find("←")+1: ]
+        lefts = self.commaSplit(leftStr, lineNo, line)
+        rights = self.commaSplit(rightStr, lineNo, line)
+        for left, right in zip(lefts, rights):
+            leftType = self.getType(left, lineNo, line)
+            rightType = self.getType(left, lineNo, line)
+            if left in (self.variables).keys():
+                if leftType != rightType:
+                    self.error("typeErr", lineNo, line, line.find(right)//2, right, leftType)
+                elif leftType == "STRING":
+                    self.variables[left].value = '"' + right +'"'
+                elif leftType == "INTEGER":
+                    self.variables[left].value = int(right)
+                elif leftType == "REAL":
+                    self.variables[left].value = float(right)
+                else:
+                    self.variables[left].value = right
+
+            else:
+                self.error("nameErr", lineNo, line, line.find(left)//2, left)
+
+
+
+
 
 
     def removeLiteral(self, token, lineNo, line):
-        token = token.strip()
-        temp = token
-        token = token.replace(" ", "")
         tokenWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
         pos = -1
         while pos < len(token)-1:
@@ -217,18 +242,24 @@ class interpreter:
                 c = token[pos]
                 while c != '"' and pos < len(token)-1:
                     pos+=1
+                    tokenWOLiteral += " "
                     c = token[pos]
                 if c == '"':  # add if the last quote is found
                     tokenWOLiteral += c
+                else:
+                    self.error("invaSyn", lineNo, line, line.find(token)+pos, None, "Mismatched quotes")
             elif c == "'" and pos < len(token)-1:  # If one quote is found, delete all until next one or to end
                 tokenWOLiteral += c
                 pos += 1
                 c = token[pos]
                 while c != "'" and pos < len(token)-1:
                     pos += 1
+                    tokenWOLiteral += " "
                     c = token[pos]
                 if c == "'":  # add if the last quote is found
                     tokenWOLiteral += c
+                else:
+                    self.error("invaSyn", lineNo, line, line.find(token)+pos, None, "Mismatched quotes")
             # check for parantesys behind a function
             elif c == "(" and self.isValidChar(token[pos-1]):
                 count = 1
@@ -237,6 +268,7 @@ class interpreter:
                 c = token[pos]
                 while count > 0 and pos < len(token)-1:
                     pos += 1
+                    tokenWOLiteral += " "
                     c = token[pos]
                     if c == "(":
                         count += 1
@@ -244,6 +276,8 @@ class interpreter:
                         count -= 1
                 if c == ")":  
                     tokenWOLiteral += c
+                elif count > 0:
+                    self.error("invaSyn", lineNo, line, line.find(token)+pos, None, "Mismatched parentheses")
             # check for array
             elif c == "[" and self.isValidChar(token[pos-1]):
                 count = 1
@@ -252,6 +286,7 @@ class interpreter:
                 c = token[pos]
                 while count > 0 and pos < len(token)-1:
                     pos += 1
+                    tokenWOLiteral += " "
                     c = token[pos]
                     if c == "[":
                         count += 1
@@ -259,49 +294,25 @@ class interpreter:
                         count -= 1
                 if c == "]": 
                     tokenWOLiteral += c
+                elif count > 0:
+                    self.error("invaSyn", lineNo, line, line.find(token)+pos, None, "Mismatched parentheses")
             else:
                 tokenWOLiteral += c
-        token = temp
+        return tokenWOLiteral
+    
+    def commaSplit(self, expression, lineNo, line):
+        tokens = []
+        expressionWOLiteral = self.removeLiteral(expression, lineNo, line)
+        tokensWOL = expressionWOLiteral.split(",")  # Seprate by commas
+        pos = 0
+        for tokenWOL in tokensWOL:
+            tokens.append((expression[pos: pos + len(tokenWOL)]).strip())
+            pos += len(tokenWOL)+1
+        return tokens
+
 
     def getValue(self, identifier, lineNo, line):
-        identifier = identifier.strip()
-        temp = identifier
-        identifier = identifier.replace(" ", "")
-        identifierWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
-        pos = -1
-        while pos < len(identifier)-1:
-            pos += 1
-            c = identifier[pos]
-            if c == '"' and pos < len(identifier)-1:  # If one quote is found, delete all until next one or to end
-                identifierWOLiteral += c
-                pos += 1
-                c = identifier[pos]
-                while c != '"' and pos < len(identifier)-1:
-                    pos+=1
-                    c = identifier[pos]
-                if c == '"':  # add if the last quote is found
-                    identifierWOLiteral += c
-            elif c == "'" and pos < len(identifier)-1:  # If one quote is found, delete all until next one or to end
-                identifierWOLiteral += c
-                pos += 1
-                c = identifier[pos]
-                while c != "'" and pos < len(identifier)-1:
-                    pos += 1
-                    c = identifier[pos]
-                if c == "'":  # add if the last quote is found
-                    identifierWOLiteral += c
-            elif c == "(" and (identifier[pos-1].isalpha() or identifier[pos-1] in self.digits + "_"):
-                identifierWOLiteral += c
-                pos += 1
-                c = identifier[pos]
-                while c != ")" and pos < len(identifier)-1:
-                    pos += 1
-                    c = identifier[pos]
-                if c == ")":  # add if the last quote is found
-                    identifierWOLiteral += c
-            else:
-                identifierWOLiteral += c
-        identifier = temp
+        identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
         if any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
             return self.evalExpr(identifier, line, lineNo)
         elif "&" in identifierWOLiteral:  # apart from string literal, there is a &
@@ -587,11 +598,11 @@ class interpreter:
 
             elif char == ')':  # If the character is a closing parenthesis
                 if not operatorStack or '(' not in operatorStack:
-                    self.error("synErr", lineNo, line, pos, None, "Mismatched parentheses")
+                    self.error("invaSyn", lineNo, line, pos, None, "Mismatched parentheses")
                 while operatorStack and operatorStack[-1] != '(': 
                     applyOperator()  # Apply operators until the opening parenthesis is encountered
                     if not operatorStack:
-                        self.error("synErr", lineNo, line, pos, None, "Mismatched parentheses")
+                        self.error("invaSyn", lineNo, line, pos, None, "Mismatched parentheses")
                 if operatorStack and operatorStack[-1] == '(':
                     operatorStack.pop()  # Pop the opening parenthesis from the stack
 
