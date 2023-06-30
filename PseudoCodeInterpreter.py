@@ -33,6 +33,8 @@ class error:
     def indexErr(self, lineNo, line, pos, detail = None, description = None):
         printRed ("Index error: array index  out of range at line "+str(lineNo))
         printRed ("\t" + str(line))
+        if description:
+             printRed (description)
         quit()
 
 err = error()
@@ -221,23 +223,97 @@ class interpreter:
         ids = line[8: line.find(':')]
         type = line[line.find(':')+1: len(line)]
         type = type.strip()
-        ids = ids.split(",")
+        ids = self.commaSplit(ids, lineNo, line)
         if type in self.types:
             for identifier in ids:
                 identifier = identifier.strip()
                 if identifier in self.identifiers:
                     self.identifiers.pop((self.identifiers.index(identifier)))
                     del (self.variables[identifier])
+                elif identifier in (self.keywords or (self.keywords).lower()):
+                    err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
                 self.identifiers.append(identifier)
                 self.variables[identifier] = variable(identifier, type)
-        elif type == "ARRAY":
+        elif type.startswith("ARRAY"):
+            if (type[0:type.find("[")]).strip() != "ARRAY":  # If the ARRAY is typed wrong, call invalSyn
+                err.invaSyn(lineNo, line, 3, None)
+            pos = 0
+            c = type[0]
+            boundStr = ""
+            typeStr = ""
+            count = 0
+            while pos < len(type)-1:
+                if c == "[":
+                    count += 1
+                    pos+=1
+                    c = type[pos]
+                    while pos < len(type)-1 and count > 0:
+                        if c == "[":
+                            count += 1
+                        elif c == "]":
+                            count -= 1
+                        if count > 0:
+                            boundStr += c
+                        pos += 1
+                        c = type[pos]
+                    while pos < len(type)-1:
+                        if c == "O":
+                            pos += 1
+                            c = type[pos]
+                            if c == "F":
+                                pos+=1
+                                c = type[pos]
+                                while pos < len(type)-1:
+                                    if c.isalpha():
+                                        typeStr+=c
+                                        count += 1
+                                        pos+=1
+                                        c = type[pos]
+                                        while pos < len(type)-1 and self.isValidChar(c):
+                                            typeStr += c
+                                            pos += 1
+                                            c = type[pos]  
+                                    else:
+                                        pos+=1
+                                        c = type[pos]
+                            else:
+                                err.invaSyn(lineNo, line, pos, None)
+                        else:
+                            pos+=1
+                            c = type[pos]
+                else:
+                    pos+=1
+                    c = type[pos]
+            if self.isValidChar(c):
+                typeStr += c
+
+            if not(typeStr in self.types):
+                err.invaSyn(lineNo, line, line.find(typeStr, pos-8, pos))
+            boundStrList = self.commaSplit(boundStr, lineNo, line)
+            bounds =[]
+            for b in boundStrList:
+                b = b.replace(" ", "")
+                low = b[0:b.find(":")]
+                high = b[b.find(":")+1:]
+                if self.getType(low, lineNo, line) != "INTEGER":
+                    err.typeErr(lineNo, line, None, low, "INTEGER")
+                elif self.getType(high, lineNo, line) != "INTEGER":
+                    err.typeErr(lineNo, line, None, high, "INTEGER")
+                low = self.getValue(low, lineNo, line)
+                high = self.getValue(high, lineNo, line)
+                if low > high:
+                    err.invaSyn(lineNo, line, -1, None, "Lower bound exceeds higher bound")
+                bounds.append([low, high])
+
             for identifier in ids:
                 identifier = identifier.strip()
                 if identifier in self.identifiers:
                     self.identifiers.pop((self.identifiers.index(identifier)))
                     del (self.arrays[identifier])
+                elif identifier in (self.keywords or (self.keywords).lower()):
+                    err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
                 self.identifiers.append(identifier)
-                self.arrays[identifier] = array(identifier, type)
+                self.arrays[identifier] = array(identifier, type, bounds)
         else:
             err.invaSyn(lineNo, line, int(line.find(type)/2), "Invalid Data Type")
 
@@ -386,8 +462,10 @@ class interpreter:
             return self.evalExpr(identifier, line, lineNo)
         elif "&" in identifierWOLiteral:  # apart from string literal, there is a &
             return self.strComb(identifier, lineNo, line)
-        elif all(n in self.digits+"." for n in identifier):  # it is a number
-            return identifier
+        elif all(n in self.digits for n in identifier):  # it is a number
+            if "." in identifier:
+                return float(identifier)
+            return int(identifier)
         elif identifier.startswith('"'):
             pos = 0
             quoteCount = 1
