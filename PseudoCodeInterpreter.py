@@ -15,8 +15,14 @@ class error:
         printRed ("\t" + str(line))
         if description:
             printRed (description + " expected")
-        quit()        
+        quit()
     def typeErr(self, lineNo, line, pos, detail = None, description = None):
+        printRed ("Type error: <" + str(detail) + "> is unexpected type at line " + str(lineNo))
+        printRed ("\t" + str(line))
+        if description:
+            printRed (description + " expected")
+        quit()
+    def runTime(self, lineNo, line, pos, detail = None, description = None):
         printRed ("Run time error: at line " + str(lineNo))
         printRed ("\t" + str(line))
         if pos != -1:
@@ -30,7 +36,6 @@ class error:
         quit()
 
 err = error()
-
 class interpreter:
     def __init__(self):
         self.identifiers = []
@@ -199,7 +204,7 @@ class interpreter:
 
     def exeOutput(self, line, lineNo):
         if line[0:line.find(" ")] != "OUTPUT":  # If the OUTPUT is typed wrong, call invalSyn
-            err(lineNo, line, 6, None, "Missing Space")
+            err.invaSyn(lineNo, line, 6, None, "Missing Space")
         else:
             message = ""
             expression = line[line.find(" ") : len(line)]  # Get everything behind OUTPUT
@@ -210,9 +215,9 @@ class interpreter:
     
     def exeDeclare(self, line, lineNo):
         if line[0:line.find(" ")] != "DECLARE":  # If the DECLARE is typed wrong, call invalSyn
-            err(lineNo, line, int(line.find(" ")/2), None)
+            err.invaSyn(lineNo, line, int(line.find(" ")/2), None)
         elif line.find(":") == -1:
-            self.error("invaSyn", lineNo, line, int(line.find(" ")/2), "Missing colon")
+            err.invaSyn(lineNo, line, int(line.find(" ")/2), "Missing colon")
         ids = line[8: line.find(':')]
         type = line[line.find(':')+1: len(line)]
         type = type.strip()
@@ -234,13 +239,13 @@ class interpreter:
                 self.identifiers.append(identifier)
                 self.arrays[identifier] = array(identifier, type)
         else:
-            self.error("invaSyn", lineNo, line, int(line.find(type)/2), "Invalid Data Type")
+            err.invaSyn(lineNo, line, int(line.find(type)/2), "Invalid Data Type")
 
     def exeConstants(self, lineNo, line):
         if line[0:line.find(" ")] != "DECLARE":  # If the CONSTANT is typed wrong, call invalSyn
-            self.error("invaSyn", lineNo, line, int(line.find(" ")/2), None)
+            err.invaSyn(lineNo, line, int(line.find(" ")/2), None)
         elif line.find(":") == -1:
-            self.error("invaSyn", lineNo, line, int(line.find(" ")/2), "Missing colon")
+            err.invaSyn(lineNo, line, int(line.find(" ")/2), "Missing colon")
         ids = line[8: line.find(':')]
         type = line[line.find(':')+1: len(line)]
         type = type.strip()
@@ -262,7 +267,7 @@ class interpreter:
                 self.identifiers.append(identifier)
                 self.constantArrays[identifier] = array(identifier, type)
         else:
-            self.error("invaSyn", lineNo, line, int(line.find(type)/2), "Invalid Data Type")
+            err.invaSyn(lineNo, line, int(line.find(type)/2), "Invalid Data Type")
 
     def exeAssign(self, lineNo, line):
         leftStr = line[0: line.find("←")]
@@ -273,10 +278,10 @@ class interpreter:
             leftType = self.getType(left, lineNo, line)
             rightType = self.getType(left, lineNo, line)
             if left in (self.constants).keys():
-                self.error("invaSyn", lineNo, line, line.find(left)//2, None, "A constant is immutable")
+                err.invaSyn(lineNo, line, line.find(left)//2, None, "A constant is immutable")
             elif left in (self.variables).keys():
                 if leftType != rightType:
-                    self.error("typeErr", lineNo, line, line.find(right)//2, right, leftType)
+                    err.typeErr(lineNo, line, line.find(right)//2, right, leftType)
                 elif leftType == "STRING":
                     self.variables[left].value = '"' + right +'"'
                 elif leftType == "INTEGER":
@@ -287,7 +292,7 @@ class interpreter:
                     self.variables[left].value = right
 
             else:
-                self.error("nameErr", lineNo, line, line.find(left)//2, left)
+                err.nameErr(lineNo, line, line.find(left)//2, left)
 
 
 
@@ -311,7 +316,7 @@ class interpreter:
                 if c == '"':  # add if the last quote is found
                     tokenWOLiteral += c
                 else:
-                    self.error("invaSyn", lineNo, line, line.find(token)+pos, None, "Mismatched quotes")
+                    err.invaSyn(lineNo, line, line.find(token)+pos, None, "Mismatched quotes")
             elif c == "'" and pos < len(token)-1:  # If one quote is found, delete all until next one or to end
                 tokenWOLiteral += c
                 pos += 1
@@ -323,7 +328,7 @@ class interpreter:
                 if c == "'":  # add if the last quote is found
                     tokenWOLiteral += c
                 else:
-                    self.error("invaSyn", lineNo, line, line.find(token)+pos, None, "Mismatched quotes")
+                    err.invaSyn(lineNo, line, line.find(token)+pos, None, "Mismatched quotes")
             # check for parantesys behind a function
             elif c == "(" and self.isValidChar(token[pos-1]):
                 count = 1
@@ -341,7 +346,7 @@ class interpreter:
                 if c == ")":  
                     tokenWOLiteral += c
                 elif count > 0:
-                    self.error("invaSyn", lineNo, line, line.find(token)+pos, None, "Mismatched parentheses")
+                    err.invaSyn(lineNo, line, line.find(token)+pos, None, "Mismatched parentheses")
             # check for array
             elif c == "[" and self.isValidChar(token[pos-1]):
                 count = 1
@@ -359,7 +364,7 @@ class interpreter:
                 if c == "]": 
                     tokenWOLiteral += c
                 elif count > 0:
-                    self.error("invaSyn", lineNo, line, line.find(token)+pos, None, "Mismatched parentheses")
+                    err.invaSyn(lineNo, line, line.find(token)+pos, None, "Mismatched parentheses")
             else:
                 tokenWOLiteral += c
         return tokenWOLiteral
@@ -391,9 +396,9 @@ class interpreter:
                 if identifier[pos] == '"':
                     quoteCount += 1
             if quoteCount < 2:
-                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             elif pos < len(identifier)-1:  # if quote is not at the end
-                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             else:
                 return identifier
         elif identifier.startswith("'"):
@@ -404,58 +409,27 @@ class interpreter:
                 if identifier[pos] == "'":
                     quoteCount += 1
             if quoteCount < 2:
-                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             elif pos < len(identifier)-1:  # if quote is not at the end
-                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             elif pos > 2:  # single quote should only contian char
-                self.error("typeErr", lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
+                err.typeErr(lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
             else:
                 return identifier
         elif identifier in (self.keywords or (self.keywords).lower()):
-            self.error("invaSyn", lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
+            err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
             return (self.variables[identifier]).returnValue()
         elif identifier in (self.functions).keys():
             return (self.variables[identifier]).returnValue()
         elif identifier in (self.procedures).keys():
-            self.error("invaSyn", lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
+            err.invaSyn(lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
         else:
-            self.error("nameErr", lineNo, line, int(line.find(identifier)/2), identifier)
+            err.nameErr(lineNo, line, int(line.find(identifier)/2), identifier)
 
     def getString(self, identifier, lineNo, line):
-        identifier = identifier.strip()
-        identifierWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
-        pos = -1
-        while pos < len(identifier)-1:
-            pos += 1
-            c = identifier[pos]
-            if c == '"' and pos < len(identifier)-1:  # If one quote is found, delete all until next one or to end
-                identifierWOLiteral += c
-                pos += 1
-                c = identifier[pos]
-                while c != '"' and pos < len(identifier)-1:
-                    pos+=1
-                    c = identifier[pos]
-                if c == '"':  # add if the last quote is found
-                    identifierWOLiteral += c
-            elif c == "'" and pos < len(identifier)-1:  # If one quote is found, delete all until next one or to end
-                identifierWOLiteral += c
-                pos += 1
-                c = identifier[pos]
-                while c != "'" and pos < len(identifier)-1:
-                    pos += 1
-                    c = identifier[pos]
-                if c == "'":  # add if the last quote is found
-                    identifierWOLiteral += c
-            else:
-                identifierWOLiteral += c
-        if any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
-            return str(self.evalExpr(identifier, line, lineNo))
-        elif "&" in identifierWOLiteral:  # apart from string literal, there is a &
-            return self.strComb(identifier, lineNo, line)[1:-1]
-        elif all(n in self.digits+"." for n in identifier):  # it is a number
-            return str(identifier)
-        elif identifier.startswith('"'):
+        identifier = self.getValue(identifier, lineNo, line)
+        if identifier.startswith('"'):
             pos = 0
             quoteCount = 1
             while pos < len(identifier)-1 and quoteCount < 2:
@@ -463,9 +437,9 @@ class interpreter:
                 if identifier[pos] == '"':
                     quoteCount += 1
             if quoteCount < 2:
-                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             elif pos < len(identifier)-1:  # if quote is not at the end
-                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             else:
                 return identifier[1:-1]
         elif identifier.startswith("'"):
@@ -476,23 +450,17 @@ class interpreter:
                 if identifier[pos] == "'":
                     quoteCount += 1
             if quoteCount < 2:
-                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             elif pos < len(identifier)-1:  # if quote is not at the end
-                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             elif pos > 2:  # single quote should only contian char
-                self.error("typeErr", lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
+                err.typeErr(lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
             else:
                 return identifier[1:-1]
-        elif identifier in (self.keywords or (self.keywords).lower()):
-            self.error("invaSyn", lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
-        elif identifier in (self.variables).keys():
-            return self.getString((self.variables[identifier]).returnValue(), lineNo, line)
-        elif identifier in (self.functions).keys():
-            return self.getString((self.functions[identifier]).returnValue(), lineNo, line)
-        elif identifier in (self.procedures).keys():
-            self.error("invaSyn", lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
         else:
-            self.error("nameErr", lineNo, line, int(line.find(identifier)/2), identifier)
+            return identifier
+
+
 
     def getType(self, identifier, lineNo, line):
         identifier = identifier.strip()
@@ -542,9 +510,9 @@ class interpreter:
                 if identifier[pos] == '"':
                     quoteCount += 1
             if quoteCount < 2:
-                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             elif pos < len(identifier)-1:  # if quote is not at the end
-                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             else:
                 return "STRING"
         elif identifier.startswith("'"):
@@ -555,23 +523,23 @@ class interpreter:
                 if identifier[pos] == "'":
                     quoteCount += 1
             if quoteCount < 2:
-                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             elif pos < len(identifier)-1:  # if quote is not at the end
-                self.error("invaSyn", lineNo, line, int(line.find(identifier, 7)+pos+1), None)
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             elif pos > 2:  # single quote should only contian char
-                self.error("typeErr", lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
+                err.typeErr(lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
             else:
                 return "CHAR"
         elif identifier in (self.keywords or (self.keywords).lower()):
-            self.error("invaSyn", lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
+            err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
             return (self.variables[identifier]).returnType()
         elif identifier in (self.functions).keys():
             return (self.variables[identifier]).returnType()
         elif identifier in (self.procedures).keys():
-            self.error("invaSyn", lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
+            err.invaSyn(lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
         else:
-            self.error("nameErr", lineNo, line, int(line.find(identifier)/2), identifier)
+            err.nameErr(lineNo, line, int(line.find(identifier)/2), identifier)
 
     def evalExpr(self, expression, line, lineNo):
         # Remove any whitespace from the expression
@@ -601,15 +569,15 @@ class interpreter:
                 valueStack.append(operand1 * operand2)
             elif operator == '/':
                 if operand2 == 0:
-                    self.error("runTime", lineNo, line, -1, None, "Zero division error")
+                    err.runTime(lineNo, line, -1, None, "Zero division error")
                 valueStack.append(operand1 / operand2)
             elif operator == 'MOD':
                 if operand2 == 0:
-                    self.error("runTime", lineNo, line, -1, None, "Zero division error")
+                    err.runTime(lineNo, line, -1, None, "Zero division error")
                 valueStack.append(operand1 % operand2)
             elif operator == 'DIV':
                 if operand2 == 0:
-                    self.error("runTime", lineNo, line, -1, None, "Zero division error")
+                    err.runTime(lineNo, line, -1, None, "Zero division error")
                 valueStack.append(operand1 // operand2)
 
         # Iterate through each character in the expression using a position pointer
@@ -641,7 +609,7 @@ class interpreter:
 
                 type = self.getType(id, lineNo, line)
                 if not(type == "INTEGER" or "REAL"):
-                    self.error("typeErr", lineNo, line, int((int(line.index(id)+len(id))/2)), id, "INTEGER or REAL")
+                    err.typeErr(lineNo, line, int((int(line.index(id)+len(id))/2)), id, "INTEGER or REAL")
 
                 pos += (len(id)-1)
                 if id in precedence.keys():  # For the word being MOD or DIV
@@ -651,22 +619,22 @@ class interpreter:
                         applyOperator()
                     operatorStack.append(id)
                 elif id in (self.keywords or (self.keywords).lower()):
-                    self.error("invaSyn", lineNo, line, int((int(line.index(id)+len(id))/2)), None)
+                    err.invaSyn(lineNo, line, int((int(line.index(id)+len(id))/2)), None)
                 elif id in self.identifiers:
                     valueStack.append(self.getValue(id, lineNo, line))
                 else:
-                    self.error("nameErr", lineNo, line, int((int(line.index(id))+len(id)/2)), id)
+                    err.nameErr(lineNo, line, int((int(line.index(id))+len(id)/2)), id)
 
             elif char == '(':  # If the character is an opening parenthesis, push it to the operator stack
                 operatorStack.append(char)
 
             elif char == ')':  # If the character is a closing parenthesis
                 if not operatorStack or '(' not in operatorStack:
-                    self.error("invaSyn", lineNo, line, pos, None, "Mismatched parentheses")
+                    err.invaSyn(lineNo, line, pos, None, "Mismatched parentheses")
                 while operatorStack and operatorStack[-1] != '(': 
                     applyOperator()  # Apply operators until the opening parenthesis is encountered
                     if not operatorStack:
-                        self.error("invaSyn", lineNo, line, pos, None, "Mismatched parentheses")
+                        err.invaSyn(lineNo, line, pos, None, "Mismatched parentheses")
                 if operatorStack and operatorStack[-1] == '(':
                     operatorStack.pop()  # Pop the opening parenthesis from the stack
 
@@ -674,7 +642,7 @@ class interpreter:
 
                 # See if the operator is valid
                 if not(expression[pos+1] in self.digits or expression[pos+1].isalpha()):
-                    self.error("invaSyn", lineNo, line, pos+1)
+                    err.invaSyn(lineNo, line, pos+1)
 
                 # If the character is an operator
                 while (operatorStack and operatorStack[-1] != '(' and
@@ -683,7 +651,7 @@ class interpreter:
                 operatorStack.append(char)
 
             else:
-                self.error("typeErr", lineNo, line, pos, char, "INTEGER or REAL")
+                err.typeErr(lineNo, line, pos, char, "INTEGER or REAL")
         while operatorStack:  # Apply any remaining operators in the stack
             applyOperator()
         return valueStack[0]  # The final value in the value stack is the result
@@ -695,6 +663,8 @@ class interpreter:
             token = token.strip()
             if self.getType(token, lineNo, line) == "STRING":
                 string += self.getString(token, lineNo, line)
+            else:
+                err.typeErr(lineNo, line, line.find(token)//2)
         string += '"'
         return string
 
@@ -714,6 +684,15 @@ class array:
         self.idenifier = identifier
         self.type = type
         self.bounds = bounds
+
+        element = None
+        array = []
+        for bound in reversed(bounds):
+            for i in range(bound[1]-bound[0]+1):
+                    array.append(element)
+            element = array
+            array = []
+        self.values = element
     
     def returnType(self):
         return self.type
@@ -721,7 +700,17 @@ class array:
     def injectValue(self, indexes, value, lineNo, line):
         for index, bound in zip(indexes, self.bounds):
             if not(index in range(bound[0], bound[1]+1)):
-                
-
+                err.indexErr(lineNo, line, None)
+            if index == indexes[-1]:
+                element[index-bound[0]] = value
+            else:
+                element = element[index-bound[0]]
 
     def returnValue(self, indexes, lineNo, line):
+        for index, bound in zip(indexes, self.bounds):
+            if not(index in range(bound[0], bound[1]+1)):
+                err.indexErr(lineNo, line, None)
+            if index == indexes[-1]:
+                return element[index-bound[0]]
+            else:
+                element = element[index-bound[0]]
