@@ -1,11 +1,43 @@
 def printRed(skk): print("\033[91m {}\033[00m" .format(skk))
 
+class error:
+    
+    def invaSyn(self, lineNo, line, pos, detail = None, description = None):
+        printRed ("Syntax error: at line " + str(lineNo))
+        printRed ("\t" + str(line))
+        if pos > -1:
+            printRed ("\t" + " "*pos + "^" )
+        if description:
+             printRed (description)     
+        quit()
+    def nameErr(self, lineNo, line, pos, detail = None, description = None):
+        printRed ("Name error: <" + str(detail) + "> referenced before assigned at line " + str(lineNo))
+        printRed ("\t" + str(line))
+        if description:
+            printRed (description + " expected")
+        quit()        
+    def typeErr(self, lineNo, line, pos, detail = None, description = None):
+        printRed ("Run time error: at line " + str(lineNo))
+        printRed ("\t" + str(line))
+        if pos != -1:
+            printRed ("\t" + " "*pos + "^" )
+        if description:
+             printRed (description)
+        quit()
+    def indexErr(self, lineNo, line, pos, detail = None, description = None):
+        printRed ("Index error: array index  out of range at line "+str(lineNo))
+        printRed ("\t" + str(line))
+        quit()
+
+err = error()
+
 class interpreter:
     def __init__(self):
         self.identifiers = []
         self.variables = {}
         self.constants = {}
         self.arrays = {}
+        self.constantArrays = {}
         self.functions = {}
         self.procedures = {}
 
@@ -110,16 +142,19 @@ class interpreter:
     def error(self, errType, lineNo, line, pos, detail = None, description = None):
         if errType == "invaSyn":
             printRed ("Syntax error: at line " + str(lineNo))
-            if pos != -1:
+            printRed ("\t" + str(line))
+            if pos > -1:
                 printRed ("\t" + " "*pos + "^" )
             if description:
                  printRed (description)
         elif errType == "nameErr":
             printRed ("Name error: <" + str(detail) + "> referenced before assigned at line " + str(lineNo))
+            printRed ("\t" + str(line))
             if description:
                 printRed (description + " expected")
         elif errType == "typeErr":
             printRed ("Type error: <" + str(detail) + "> is unexpected type at line " + str(lineNo))
+            printRed ("\t" + str(line))
             if description:
                 printRed (description + " expected")
         elif errType == "runTime":
@@ -129,7 +164,9 @@ class interpreter:
                 printRed ("\t" + " "*pos + "^" )
             if description:
                  printRed (description)
-        
+        elif errType == "indexErr":
+            printRed ("Index error: array index  out of range at line "+str(lineNo))
+            printRed ("\t" + str(line))
         quit()
 
     def isValidChar(self, id):
@@ -162,7 +199,7 @@ class interpreter:
 
     def exeOutput(self, line, lineNo):
         if line[0:line.find(" ")] != "OUTPUT":  # If the OUTPUT is typed wrong, call invalSyn
-            self.error("invaSyn", lineNo, line, 6, None, "Missing Space")
+            err(lineNo, line, 6, None, "Missing Space")
         else:
             message = ""
             expression = line[line.find(" ") : len(line)]  # Get everything behind OUTPUT
@@ -173,7 +210,7 @@ class interpreter:
     
     def exeDeclare(self, line, lineNo):
         if line[0:line.find(" ")] != "DECLARE":  # If the DECLARE is typed wrong, call invalSyn
-            self.error("invaSyn", lineNo, line, int(line.find(" ")/2), None)
+            err(lineNo, line, int(line.find(" ")/2), None)
         elif line.find(":") == -1:
             self.error("invaSyn", lineNo, line, int(line.find(" ")/2), "Missing colon")
         ids = line[8: line.find(':')]
@@ -199,8 +236,33 @@ class interpreter:
         else:
             self.error("invaSyn", lineNo, line, int(line.find(type)/2), "Invalid Data Type")
 
-    def exeConstants(self):
-        pass
+    def exeConstants(self, lineNo, line):
+        if line[0:line.find(" ")] != "DECLARE":  # If the CONSTANT is typed wrong, call invalSyn
+            self.error("invaSyn", lineNo, line, int(line.find(" ")/2), None)
+        elif line.find(":") == -1:
+            self.error("invaSyn", lineNo, line, int(line.find(" ")/2), "Missing colon")
+        ids = line[8: line.find(':')]
+        type = line[line.find(':')+1: len(line)]
+        type = type.strip()
+        ids = ids.split(",")
+        if type in self.types:
+            for identifier in ids:
+                identifier = identifier.strip()
+                if identifier in self.identifiers:
+                    self.identifiers.pop((self.identifiers.index(identifier)))
+                    del (self.constants[identifier])
+                self.identifiers.append(identifier)
+                self.constants[identifier] = variable(identifier, type)
+        elif type == "ARRAY":
+            for identifier in ids:
+                identifier = identifier.strip()
+                if identifier in self.identifiers:
+                    self.identifiers.pop((self.identifiers.index(identifier)))
+                    del (self.constantArrays[identifier])
+                self.identifiers.append(identifier)
+                self.constantArrays[identifier] = array(identifier, type)
+        else:
+            self.error("invaSyn", lineNo, line, int(line.find(type)/2), "Invalid Data Type")
 
     def exeAssign(self, lineNo, line):
         leftStr = line[0: line.find("←")]
@@ -210,7 +272,9 @@ class interpreter:
         for left, right in zip(lefts, rights):
             leftType = self.getType(left, lineNo, line)
             rightType = self.getType(left, lineNo, line)
-            if left in (self.variables).keys():
+            if left in (self.constants).keys():
+                self.error("invaSyn", lineNo, line, line.find(left)//2, None, "A constant is immutable")
+            elif left in (self.variables).keys():
                 if leftType != rightType:
                     self.error("typeErr", lineNo, line, line.find(right)//2, right, leftType)
                 elif leftType == "STRING":
@@ -347,12 +411,12 @@ class interpreter:
                 self.error("typeErr", lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
             else:
                 return identifier
-        elif identifier in self.keywords:
+        elif identifier in (self.keywords or (self.keywords).lower()):
             self.error("invaSyn", lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
-            return (self.variables[identifier]).getVarValue()
+            return (self.variables[identifier]).returnValue()
         elif identifier in (self.functions).keys():
-            return (self.variables[identifier]).getFunValue()
+            return (self.variables[identifier]).returnValue()
         elif identifier in (self.procedures).keys():
             self.error("invaSyn", lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
         else:
@@ -419,12 +483,12 @@ class interpreter:
                 self.error("typeErr", lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
             else:
                 return identifier[1:-1]
-        elif identifier in self.keywords:
+        elif identifier in (self.keywords or (self.keywords).lower()):
             self.error("invaSyn", lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
-            return self.getString((self.variables[identifier]).getVarValue(), lineNo, line)
+            return self.getString((self.variables[identifier]).returnValue(), lineNo, line)
         elif identifier in (self.functions).keys():
-            return self.getString((self.functions[identifier]).getFunValue(), lineNo, line)
+            return self.getString((self.functions[identifier]).returnValue(), lineNo, line)
         elif identifier in (self.procedures).keys():
             self.error("invaSyn", lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
         else:
@@ -498,12 +562,12 @@ class interpreter:
                 self.error("typeErr", lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
             else:
                 return "CHAR"
-        elif identifier in self.keywords:
+        elif identifier in (self.keywords or (self.keywords).lower()):
             self.error("invaSyn", lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
-            return (self.variables[identifier]).getVarType()
+            return (self.variables[identifier]).returnType()
         elif identifier in (self.functions).keys():
-            return (self.variables[identifier]).getFunType()
+            return (self.variables[identifier]).returnType()
         elif identifier in (self.procedures).keys():
             self.error("invaSyn", lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
         else:
@@ -586,7 +650,7 @@ class interpreter:
                         # Apply operators with higher or equal precedence from the stack
                         applyOperator()
                     operatorStack.append(id)
-                elif id in self.keywords:
+                elif id in (self.keywords or (self.keywords).lower()):
                     self.error("invaSyn", lineNo, line, int((int(line.index(id)+len(id))/2)), None)
                 elif id in self.identifiers:
                     valueStack.append(self.getValue(id, lineNo, line))
@@ -640,7 +704,24 @@ class variable:
         self.type = type
         self.value = value
     
-    def getVarValue(self):
+    def returnValue(self):
         return self.value
-    def getVarType(self):
+    def returnType(self):
         return self.type
+
+class array:
+    def __init__(self, identifier, type, bounds):
+        self.idenifier = identifier
+        self.type = type
+        self.bounds = bounds
+    
+    def returnType(self):
+        return self.type
+
+    def injectValue(self, indexes, value, lineNo, line):
+        for index, bound in zip(indexes, self.bounds):
+            if not(index in range(bound[0], bound[1]+1)):
+                
+
+
+    def returnValue(self, indexes, lineNo, line):
