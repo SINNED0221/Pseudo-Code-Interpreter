@@ -498,6 +498,28 @@ class interpreter:
             err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
             return (self.variables[identifier]).returnValue()
+        elif identifier in (self.constants).keys():
+            return (self.variables[identifier]).returnValue()
+        elif "[" in identifierWOLiteral and (identifier[0: identifier.find("[")]) in self.arrays.keys():
+            identifier = identifier.strip()
+            name = identifier[0: identifier.find("[")]
+            name = name.strip()
+            indexStr = identifier[identifier.find("[")+1: -1]
+            indexes = self.commaSplit(indexStr, lineNo, line)
+            for i, index in zip(range(len(indexes), indexes)):
+                indexes[i] = self.getValue(index)
+            (self.arrays[name]).returnValue(indexes, lineNo, line)
+
+        elif "[" in identifierWOLiteral and (identifier[0: identifier.find("[")]) in self.constantArrays.keys():
+            identifier = identifier.strip()
+            name = identifier[0: identifier.find("[")]
+            name = name.strip()
+            indexStr = identifier[identifier.find("[")+1: -1]
+            indexes = self.commaSplit(indexStr, lineNo, line)
+            for i, index in zip(range(len(indexes), indexes)):
+                indexes[i] = self.getValue(index)
+            (self.constantArrays[name]).returnValue(indexes, lineNo, line)
+
         elif identifier in (self.functions).keys():
             return (self.variables[identifier]).returnValue()
         elif identifier in (self.procedures).keys():
@@ -542,31 +564,7 @@ class interpreter:
 
     def getType(self, identifier, lineNo, line):
         identifier = identifier.strip()
-        identifierWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
-        pos = -1
-        while pos < len(identifier)-1:
-            pos += 1
-            c = identifier[pos]
-            if c == '"' and pos < len(identifier)-1:  # If one quote is found, delete all until next one or to end
-                identifierWOLiteral += c
-                pos += 1
-                c = identifier[pos]
-                while c != '"' and pos < len(identifier)-1:
-                    pos+=1
-                    c = identifier[pos]
-                if c == '"':  # add if the last quote is found
-                    identifierWOLiteral += c
-            elif c == "'" and pos < len(identifier)-1:  # If one quote is found, delete all until next one or to end
-                identifierWOLiteral += c
-                pos += 1
-                c = identifier[pos]
-                while c != "'" and pos < len(identifier)-1:
-                    pos += 1
-                    c = identifier[pos]
-                if c == "'":  # add if the last quote is found
-                    identifierWOLiteral += c
-            else:
-                identifierWOLiteral += c
+        identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
         if any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
             if self.evalExpr(identifier, line, lineNo) == 'float':
                 return "REAL"
