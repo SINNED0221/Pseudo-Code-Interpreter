@@ -179,6 +179,31 @@ class interpreter:
     def isValidChar(self, id):
         return id.isalpha() or id in self.digits + "_"
 
+    def isArray(self, identifier, lineNo, line):
+        identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
+        if ("[" and "]") in identifierWOLiteral and (identifier[0: identifier.find("[")]) in self.arrays.keys():
+            identifier = identifier.strip()
+            name = identifier[0: identifier.find("[")]
+            name = name.strip()
+            indexStr = identifier[identifier.find("[")+1: -1]
+            indexes = self.commaSplit(indexStr, lineNo, line)
+            for i, index in zip(range(len(indexes), indexes)):
+                indexes[i] = self.getValue(index, lineNo, line)
+            return [True, indexes]
+
+        elif ("[" and "]") in identifierWOLiteral and (identifier[0: identifier.find("[")]) in self.constantArrays.keys():
+            identifier = identifier.strip()
+            name = identifier[0: identifier.find("[")]
+            name = name.strip()
+            indexStr = identifier[identifier.find("[")+1: -1]
+            indexes = self.commaSplit(indexStr, lineNo, line)
+            for i, index in zip(range(len(indexes), indexes)):
+                indexes[i] = self.getValue(index, lineNo, line)
+            return ["con", indexes]
+
+        else:
+            return [False, None]
+
     def executeLine(self, line, lineNo):
         if "//" in line:  # get rid of comments
             line = line[0 : line.find("//")]
@@ -353,23 +378,21 @@ class interpreter:
         for left, right in zip(lefts, rights):
             leftType = self.getType(left, lineNo, line)
             rightType = self.getType(left, lineNo, line)
+            right = self.getValue (right, lineNo, line)
             if left in (self.constants).keys():
                 err.invaSyn(lineNo, line, line.find(left)//2, None, "A constant is immutable")
+            elif self.isArray(left, lineNo, line)[0] == "con":
+                err.invaSyn(lineNo, line, line.find(left)//2, None, "A constant is immutable")
+            elif leftType != rightType:
+                err.typeErr(lineNo, line, line.find(right)//2, right, leftType)
             elif left in (self.variables).keys():
-                if leftType != rightType:
-                    err.typeErr(lineNo, line, line.find(right)//2, right, leftType)
-                elif leftType == "STRING":
-                    self.variables[left].value = '"' + right +'"'
-                elif leftType == "INTEGER":
-                    self.variables[left].value = int(right)
-                elif leftType == "REAL":
-                    self.variables[left].value = float(right)
-                else:
-                    self.variables[left].value = right
+                self.variables[left].value = right
+            elif self.isArray(left, lineNo, line)[0]:
+                self.arrays[left].injectValue(self.isArray(left, lineNo, line)[1], right, lineNo, line)
 
             else:
                 err.nameErr(lineNo, line, line.find(left)//2, left)
-
+            
 
 
 
@@ -500,24 +523,24 @@ class interpreter:
             return (self.variables[identifier]).returnValue()
         elif identifier in (self.constants).keys():
             return (self.variables[identifier]).returnValue()
-        elif "[" in identifierWOLiteral and (identifier[0: identifier.find("[")]) in self.arrays.keys():
+        elif ("[" and "]") in identifierWOLiteral and (identifier[0: identifier.find("[")]) in self.arrays.keys():
             identifier = identifier.strip()
             name = identifier[0: identifier.find("[")]
             name = name.strip()
             indexStr = identifier[identifier.find("[")+1: -1]
             indexes = self.commaSplit(indexStr, lineNo, line)
             for i, index in zip(range(len(indexes), indexes)):
-                indexes[i] = self.getValue(index)
+                indexes[i] = self.getValue(index, lineNo, line)
             (self.arrays[name]).returnValue(indexes, lineNo, line)
 
-        elif "[" in identifierWOLiteral and (identifier[0: identifier.find("[")]) in self.constantArrays.keys():
+        elif ("[" and "]") in identifierWOLiteral and (identifier[0: identifier.find("[")]) in self.constantArrays.keys():
             identifier = identifier.strip()
             name = identifier[0: identifier.find("[")]
             name = name.strip()
             indexStr = identifier[identifier.find("[")+1: -1]
             indexes = self.commaSplit(indexStr, lineNo, line)
             for i, index in zip(range(len(indexes), indexes)):
-                indexes[i] = self.getValue(index)
+                indexes[i] = self.getValue(index, lineNo, line)
             (self.constantArrays[name]).returnValue(indexes, lineNo, line)
 
         elif identifier in (self.functions).keys():
