@@ -44,7 +44,6 @@ class interpreter:
         self.variables = {}
         self.constants = {}
         self.arrays = {}
-        self.constantArrays = {}
         self.functions = {}
         self.procedures = {}
 
@@ -56,6 +55,19 @@ class interpreter:
             "/",
             "MOD",
             "DIV"
+        ]
+        self.logicOperators = [
+            "AND",
+            "OR",
+            "NOT"
+        ]
+        self.relationOperators = [
+            "<",
+            ">",
+            "<=",
+            ">=",
+            "=",
+            "<>"
         ]
         self.keywords = [
             'OF',
@@ -181,25 +193,17 @@ class interpreter:
 
     def isArray(self, identifier, lineNo, line):
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
-        if ("[" and "]") in identifierWOLiteral and (identifier[0: identifier.find("[")]) in self.arrays.keys():
+        if ("[" and "]") in identifierWOLiteral and ((identifier[0: identifier.find("[")]) in self.arrays.keys()):
             identifier = identifier.strip()
             name = identifier[0: identifier.find("[")]
             name = name.strip()
             indexStr = identifier[identifier.find("[")+1: -1]
             indexes = self.commaSplit(indexStr, lineNo, line)
-            for i, index in zip(range(len(indexes), indexes)):
+            for i, index in zip(range(len(indexes)), indexes):
                 indexes[i] = self.getValue(index, lineNo, line)
-            return [True, indexes]
+            return [True, name, indexes]
 
-        elif ("[" and "]") in identifierWOLiteral and (identifier[0: identifier.find("[")]) in self.constantArrays.keys():
-            identifier = identifier.strip()
-            name = identifier[0: identifier.find("[")]
-            name = name.strip()
-            indexStr = identifier[identifier.find("[")+1: -1]
-            indexes = self.commaSplit(indexStr, lineNo, line)
-            for i, index in zip(range(len(indexes), indexes)):
-                indexes[i] = self.getValue(index, lineNo, line)
-            return ["con", indexes]
+
 
         else:
             return [False, None]
@@ -218,18 +222,23 @@ class interpreter:
                 break
             identifier += char
         if identifier == "OUTPUT":
-            self.exeOutput(line, lineNo)
+            self.exeOutput(lineNo, line)
         elif identifier == "DECLARE":
-            self.exeDeclare(line, lineNo)
+            self.exeDeclare(lineNo, line)
         elif identifier == "CONSTANT":
-            self.exeConstant(line, lineNo)
-        
+            self.exeConstant(lineNo, line)
+        elif identifier == "INPUT":
+            self.exeInput(lineNo, line)
+
         elif identifier in self.identifiers:
             self.exeAssign(lineNo, line)
 
+        else:
+            err.invaSyn(lineNo, line, -1)
 
 
-    def exeOutput(self, line, lineNo):
+
+    def exeOutput(self, lineNo, line):
         if line[0:line.find(" ")] != "OUTPUT":  # If the OUTPUT is typed wrong, call invalSyn
             err.invaSyn(lineNo, line, 6, None, "Missing Space")
         else:
@@ -240,11 +249,41 @@ class interpreter:
                 message += self.getString(token, lineNo, line)
             print(message)
     
-    def exeDeclare(self, line, lineNo):
+    def exeInput(self, lineNo, line):
+        if line[0:line.find(" ")] != "INPUT": 
+            err.invaSyn(lineNo, line, 5, None, "Missing Space")
+        identifier = line[line.find(" ")+1:]
+        identifier = identifier.strip()
+        type = self.getType(identifier, lineNo, line)
+        value = input()
+        if all(n in self.digits for n in value):
+            value = int(value)
+            valueType = "INTEGER"
+        elif all(n in self.digits+"." for n in value):
+            value = float(value)
+            valueType = "REAL"
+        
+        else:
+            value = '"'+value+'"'
+            valueType = "STRING"
+
+        if identifier in (self.constants).keys():
+            err.invaSyn(lineNo, line, (line.find(identifier)+len(identifier))//2, None, "A constant is immutable")
+        elif type != valueType:
+            err.typeErr(lineNo, line, (line.find(value)+len(value))//2, value, type)
+        elif identifier in (self.variables).keys():
+            self.variables[identifier].value = value
+        elif (self.isArray(identifier, lineNo, line))[0] == True:
+            self.arrays[self.isArray(identifier, lineNo, line)[1]].injectValue(self.isArray(identifier, lineNo, line)[2], value, lineNo, line)
+        else:
+            err.nameErr(lineNo, line, (line.find(identifier)+len(identifier))//2, identifier)
+
+
+    def exeDeclare(self, lineNo, line):
         if line[0:line.find(" ")] != "DECLARE":  # If the DECLARE is typed wrong, call invalSyn
-            err.invaSyn(lineNo, line, int(line.find(" ")/2), None)
+            err.invaSyn(lineNo, line, 8, None)
         elif line.find(":") == -1:
-            err.invaSyn(lineNo, line, int(line.find(" ")/2), "Missing colon")
+            err.invaSyn(lineNo, line, -1, "Missing colon")
         ids = line[8: line.find(':')]
         type = line[line.find(':')+1: len(line)]
         type = type.strip()
@@ -342,33 +381,26 @@ class interpreter:
         else:
             err.invaSyn(lineNo, line, int(line.find(type)/2), "Invalid Data Type")
 
-    def exeConstants(self, lineNo, line):
-        if line[0:line.find(" ")] != "DECLARE":  # If the CONSTANT is typed wrong, call invalSyn
-            err.invaSyn(lineNo, line, int(line.find(" ")/2), None)
-        elif line.find(":") == -1:
-            err.invaSyn(lineNo, line, int(line.find(" ")/2), "Missing colon")
-        ids = line[8: line.find(':')]
-        type = line[line.find(':')+1: len(line)]
-        type = type.strip()
-        ids = ids.split(",")
-        if type in self.types:
-            for identifier in ids:
-                identifier = identifier.strip()
+    def exeConstant(self, lineNo, line):
+        if line[0:line.find(" ")] != "CONSTANT":  # If the CONSTANT is typed wrong, call invalSyn
+            err.invaSyn(lineNo, line, 8, None)
+        elif line.find("=") == -1:
+            err.invaSyn(lineNo, line, -1, "Missing equal sign")
+        ids = line[8: line.find('=')]
+        values = line[line.find('=')+1: len(line)]
+        values = self.commaSplit(values, lineNo, line)
+        ids = self.commaSplit(ids, lineNo, line)
+        
+        for identifier, value in zip(ids, values):
+            type = self.getType(value, lineNo, line)
+            if type in self.types:
                 if identifier in self.identifiers:
                     self.identifiers.pop((self.identifiers.index(identifier)))
                     del (self.constants[identifier])
                 self.identifiers.append(identifier)
-                self.constants[identifier] = variable(identifier, type)
-        elif type == "ARRAY":
-            for identifier in ids:
-                identifier = identifier.strip()
-                if identifier in self.identifiers:
-                    self.identifiers.pop((self.identifiers.index(identifier)))
-                    del (self.constantArrays[identifier])
-                self.identifiers.append(identifier)
-                self.constantArrays[identifier] = array(identifier, type)
-        else:
-            err.invaSyn(lineNo, line, int(line.find(type)/2), "Invalid Data Type")
+                self.constants[identifier] = variable(identifier, type, value)
+            else:
+                err.invaSyn(lineNo, line, int(line.find(type)/2), "Invalid Data Type")
 
     def exeAssign(self, lineNo, line):
         leftStr = line[0: line.find("←")]
@@ -380,23 +412,16 @@ class interpreter:
             rightType = self.getType(left, lineNo, line)
             right = self.getValue (right, lineNo, line)
             if left in (self.constants).keys():
-                err.invaSyn(lineNo, line, line.find(left)//2, None, "A constant is immutable")
-            elif self.isArray(left, lineNo, line)[0] == "con":
-                err.invaSyn(lineNo, line, line.find(left)//2, None, "A constant is immutable")
+                err.invaSyn(lineNo, line, (line.find(left)+len(left))//2, None, "A constant is immutable")
             elif leftType != rightType:
-                err.typeErr(lineNo, line, line.find(right)//2, right, leftType)
+                err.typeErr(lineNo, line, (line.find(right)+len(right))//2, right, leftType)
             elif left in (self.variables).keys():
                 self.variables[left].value = right
-            elif self.isArray(left, lineNo, line)[0]:
-                self.arrays[left].injectValue(self.isArray(left, lineNo, line)[1], right, lineNo, line)
-
+            elif (self.isArray(left, lineNo, line))[0] == True:
+                self.arrays[self.isArray(left, lineNo, line)[1]].injectValue(self.isArray(left, lineNo, line)[2], right, lineNo, line)
             else:
-                err.nameErr(lineNo, line, line.find(left)//2, left)
+                err.nameErr(lineNo, line, (line.find(left)+len(left))//2, left)
             
-
-
-
-
 
     def removeLiteral(self, token, lineNo, line):
         tokenWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
@@ -482,13 +507,17 @@ class interpreter:
     def getValue(self, identifier, lineNo, line):
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
         if any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
-            return self.evalExpr(identifier, line, lineNo)
+            return self.evalExpr(identifier, lineNo, line)
         elif "&" in identifierWOLiteral:  # apart from string literal, there is a &
             return self.strComb(identifier, lineNo, line)
         elif all(n in self.digits for n in identifier):  # it is a number
             if "." in identifier:
                 return float(identifier)
             return int(identifier)
+        elif any(self.logicOperators in identifierWOLiteral):
+
+        elif any(self.relationOperators in identifierWOLiteral):
+
         elif identifier.startswith('"'):
             pos = 0
             quoteCount = 1
@@ -522,27 +551,10 @@ class interpreter:
         elif identifier in (self.variables).keys():
             return (self.variables[identifier]).returnValue()
         elif identifier in (self.constants).keys():
-            return (self.variables[identifier]).returnValue()
-        elif ("[" and "]") in identifierWOLiteral and (identifier[0: identifier.find("[")]) in self.arrays.keys():
-            identifier = identifier.strip()
-            name = identifier[0: identifier.find("[")]
-            name = name.strip()
-            indexStr = identifier[identifier.find("[")+1: -1]
-            indexes = self.commaSplit(indexStr, lineNo, line)
-            for i, index in zip(range(len(indexes), indexes)):
-                indexes[i] = self.getValue(index, lineNo, line)
-            (self.arrays[name]).returnValue(indexes, lineNo, line)
-
-        elif ("[" and "]") in identifierWOLiteral and (identifier[0: identifier.find("[")]) in self.constantArrays.keys():
-            identifier = identifier.strip()
-            name = identifier[0: identifier.find("[")]
-            name = name.strip()
-            indexStr = identifier[identifier.find("[")+1: -1]
-            indexes = self.commaSplit(indexStr, lineNo, line)
-            for i, index in zip(range(len(indexes), indexes)):
-                indexes[i] = self.getValue(index, lineNo, line)
-            (self.constantArrays[name]).returnValue(indexes, lineNo, line)
-
+            return (self.constants[identifier]).returnValue()
+        elif self.isArray(identifier, lineNo, line)[0] == True:
+            arr = self.isArray(identifier, lineNo, line)
+            return (self.arrays[arr[1]]).returnValue(arr[2], lineNo, line)
         elif identifier in (self.functions).keys():
             return (self.variables[identifier]).returnValue()
         elif identifier in (self.procedures).keys():
@@ -551,7 +563,7 @@ class interpreter:
             err.nameErr(lineNo, line, int(line.find(identifier)/2), identifier)
 
     def getString(self, identifier, lineNo, line):
-        identifier = self.getValue(identifier, lineNo, line)
+        identifier = str(self.getValue(identifier, lineNo, line))
         if identifier.startswith('"'):
             pos = 0
             quoteCount = 1
@@ -589,14 +601,14 @@ class interpreter:
         identifier = identifier.strip()
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
         if any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
-            if self.evalExpr(identifier, line, lineNo) == 'float':
+            if type(self.evalExpr(identifier, lineNo, line)) == 'float':
                 return "REAL"
             else:
                 return "INTEGER"
         elif "&" in identifierWOLiteral:  # apart from string literal, there is a &
             self.strComb(identifier, lineNo, line)
             return "STRING"
-        elif all(n in self.digits for n in identifier):  # it is a number
+        elif all(n in self.digits+"." for n in identifier):  # it is a number
             if "." in identifier:
                 return "REAL"
             else:
@@ -609,8 +621,8 @@ class interpreter:
                 if identifier[pos] == '"':
                     quoteCount += 1
             if quoteCount < 2:
-                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
-            elif pos < len(identifier)-1:  # if quote is not at the end
+                err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)  # the 7 in find is to make sure that
+            elif pos < len(identifier)-1:  # if quote is not at the end               # the keyword is not taken as the wrong identifier
                 err.invaSyn(lineNo, line, int(line.find(identifier, 7)+pos+1), None)
             else:
                 return "STRING"
@@ -633,6 +645,13 @@ class interpreter:
             err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
             return (self.variables[identifier]).returnType()
+        elif self.isArray(identifier, lineNo, line)[0] == True:
+            arr = self.isArray(identifier, lineNo, line)
+            return (self.arrays[arr[1]]).returnType()
+        elif identifier in (self.variables).keys():
+            return (self.variables[identifier]).returnType()
+        elif identifier in (self.constants).keys():
+            return (self.constants[identifier]).returnType()
         elif identifier in (self.functions).keys():
             return (self.variables[identifier]).returnType()
         elif identifier in (self.procedures).keys():
@@ -640,7 +659,7 @@ class interpreter:
         else:
             err.nameErr(lineNo, line, int(line.find(identifier)/2), identifier)
 
-    def evalExpr(self, expression, line, lineNo):
+    def evalExpr(self, expression, lineNo, line):
         # Remove any whitespace from the expression
         expression = expression.replace(" ", "")
         # Operator precedence dictionary
@@ -755,6 +774,67 @@ class interpreter:
             applyOperator()
         return valueStack[0]  # The final value in the value stack is the result
 
+    def evalLogic(self, expression, lineNo, line):
+    
+    def evalRelation(self, expression, lineNo, line):
+        pos = -1
+        id = ""
+        while pos < len(expression)-1:
+            pos += 1
+            c = expression[pos]
+            if c in "><=":
+                left = id.strip()
+                id = ""
+                if c == "<":
+                    if expression[pos+1] in ">=":
+                        op = "<"+expression[pos+1]
+                        pos+=1
+                    else:
+                        op = "<"
+                elif c == ">":
+                    if expression[pos+1] == "=":
+                        op = ">="
+                        pos+=1
+                    else:
+                        op = ">"
+                elif c == "=":
+                    op = "="
+            else:
+                id += c
+        right = id.strip
+        left = self.getValue(left, lineNo, line)
+        right = self.getValue(right, lineNo, line)
+        if op == ">":
+            if left > right:
+                return "TRUE"
+            else:
+                return "FALSE"
+        elif op == "<":
+            if left < right:
+                return "TRUE"
+            else:
+                return "FALSE"
+        elif op == ">=":
+            if left >= right:
+                return "TRUE"
+            else:
+                return "FALSE"
+        elif op == "<=":
+            if left <= right:
+                return "TRUE"
+            else:
+                return "FALSE"
+        elif op == "=":
+            if left == right:
+                return "TRUE"
+            else:
+                return "FALSE"
+        elif op == "<>":
+            if left != right:
+                return "TRUE"
+            else:
+                return "FALSE"
+
     def strComb(self, expression, lineNo, line):
         tokens = expression.split("&")
         string = '"'
@@ -763,7 +843,7 @@ class interpreter:
             if self.getType(token, lineNo, line) == "STRING":
                 string += self.getString(token, lineNo, line)
             else:
-                err.typeErr(lineNo, line, line.find(token)//2)
+                err.typeErr(lineNo, line, (line.find(token)+len(token))//2)
         string += '"'
         return string
 
@@ -797,6 +877,7 @@ class array:
         return self.type
 
     def injectValue(self, indexes, value, lineNo, line):
+        element = self.values
         for index, bound in zip(indexes, self.bounds):
             if not(index in range(bound[0], bound[1]+1)):
                 err.indexErr(lineNo, line, None)
@@ -806,6 +887,7 @@ class array:
                 element = element[index-bound[0]]
 
     def returnValue(self, indexes, lineNo, line):
+        element = self.values
         for index, bound in zip(indexes, self.bounds):
             if not(index in range(bound[0], bound[1]+1)):
                 err.indexErr(lineNo, line, None)
