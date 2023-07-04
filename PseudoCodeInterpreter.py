@@ -153,10 +153,12 @@ class interpreter:
 
     def run(self, code):
         lines = code.split("\n")
-        lineNo = 1
-        for line in lines:
-            self.executeLine(line.strip(), lineNo)
+        lineNo = -1
+        while lineNo < len(lines)-1:
             lineNo += 1
+            line = lines[lineNo]
+            self.executeLine(line.strip(), lineNo+1)
+            
     
     def error(self, errType, lineNo, line, pos, detail = None, description = None):
         if errType == "invaSyn":
@@ -514,10 +516,10 @@ class interpreter:
             if "." in identifier:
                 return float(identifier)
             return int(identifier)
-        elif any(self.logicOperators in identifierWOLiteral):
-
-        elif any(self.relationOperators in identifierWOLiteral):
-
+        elif any(op in identifierWOLiteral for op in self.logicOperators):
+            pass
+        elif any(op in identifierWOLiteral for op in self.relationOperators):
+            pass
         elif identifier.startswith('"'):
             pos = 0
             quoteCount = 1
@@ -662,6 +664,7 @@ class interpreter:
     def evalExpr(self, expression, lineNo, line):
         # Remove any whitespace from the expression
         expression = expression.replace(" ", "")
+        expressionWOL = self.removeLiteral(expression, lineNo, line)
         # Operator precedence dictionary
         precedence = {
             '+': 1,
@@ -717,19 +720,13 @@ class interpreter:
             elif char.isalpha():
                 id = char
                 # The first char of a identifier can only be a letter but it can be followed by _ and number
-                while (expression.index(char) + 1 < len(expression) and 
-                       (expression[expression.index(char) + 1].isalpha() or 
-                        expression[expression.index(char) + 1] in self.digits+"_")):
-                    id += expression[expression.index(char) + 1]
-                    char = expression[expression.index(char) + 1]
-                    #if id in precedence.keys():  # If the first three match the operator, stop to avoid conflict
-                    #    break
+                while (pos+1 < len(expression) and self.isValidChar(expression[pos+1])):
+                    id += expression[pos+1]
+                    pos+=1
+                    char = expression[pos]
 
-                type = self.getType(id, lineNo, line)
-                if not(type == "INTEGER" or "REAL"):
-                    err.typeErr(lineNo, line, int((int(line.index(id)+len(id))/2)), id, "INTEGER or REAL")
-
-                pos += (len(id)-1)
+                    if id in precedence.keys():  # If the first three match the operator, stop to avoid conflict
+                        break
                 if id in precedence.keys():  # For the word being MOD or DIV
                     while (operatorStack and operatorStack[-1] != '(' and
                         precedence[id] <= precedence.get(operatorStack[-1], 0)):
@@ -738,10 +735,45 @@ class interpreter:
                     operatorStack.append(id)
                 elif id in (self.keywords or (self.keywords).lower()):
                     err.invaSyn(lineNo, line, int((int(line.index(id)+len(id))/2)), None)
-                elif id in self.identifiers:
+                elif id in self.variables.keys() or id in self.constants.keys():
                     valueStack.append(self.getValue(id, lineNo, line))
+                elif id in self.arrays.keys():
+                    pos +=1
+                    if expression[pos] == "[":
+                        pass
+                    else:
+                        err.invaSyn(lineNo, line, (int(line.index(id)+(len(id))//2)), None, "Missing bracket")
+                    while expressionWOL[pos]!="]" and pos < len(expression)-1:
+                        id += expression[pos]
+                        pos += 1
+                    if expression[pos] == "]":
+                        id += "]"
+                    else:
+                        err.invaSyn(lineNo, line, int((int(line.index(id)+len(id))/2)), None, "Unmatched brackets")
+                    valueStack.append(self.getValue(id, lineNo, line))
+                elif id in self.functions.keys():
+                    pos +=1
+                    if expression[pos] == "(":
+                        pass
+                    else:
+                        err.invaSyn(lineNo, line, (int(line.index(id)+(len(id))//2)), None, "Missing bracket")
+                    while expressionWOL[pos]!=")" and pos < len(expression)-1:
+                        id += expression[pos]
+                        pos += 1
+                    if expression[pos] == ")":
+                        id += ")"
+                    else:
+                        err.invaSyn(lineNo, line, int((int(line.index(id)+len(id))/2)), None, "Unmatched brackets")
+                    valueStack.append(self.getValue(id, lineNo, line))
+                elif id in self.procedures.keys():
+                    err.invaSyn(lineNo, line, int(line.find(id)/2), "A procedure has no return value")
                 else:
-                    err.nameErr(lineNo, line, int((int(line.index(id))+len(id)/2)), id)
+                    print(id)
+                    err.nameErr(lineNo, line, line.index(id)+(len(id)//2), id)
+                if not(id in precedence.keys()):
+                    type = self.getType(id, lineNo, line)
+                    if not(type == "INTEGER" or "REAL"):
+                        err.typeErr(lineNo, line, line.index(id)+(len(id)//2), id, "INTEGER or REAL")
 
             elif char == '(':  # If the character is an opening parenthesis, push it to the operator stack
                 operatorStack.append(char)
@@ -775,29 +807,160 @@ class interpreter:
         return valueStack[0]  # The final value in the value stack is the result
 
     def evalLogic(self, expression, lineNo, line):
+        # Remove any whitespace from the expression
+        expression = expression.replace(" ", "")
+        expressionWOL = self.removeLiteral(expression, lineNo, line)
+        # Operator precedence dictionary
+        precedence = {
+            'OR': 1,
+            'AND': 2,
+            'NOT': 3,
+        }
+        # Stack to hold operators and values
+        operatorStack = []
+        valueStack = []
+        def applyOperator():  # Helper functions for arithmetic operations
+            operator = operatorStack.pop()
+            operand2 = valueStack.pop()
+            operand1 = valueStack.pop()
+
+            if operator == 'AND':
+                valueStack.append(operand1 and operand2)
+            elif operator == 'OR':
+                valueStack.append(operand1 or operand2)
+            elif operator == 'NOT':
+                valueStack.append([operand1, not operand2])
+
+
+        pos = -1
+        while pos < len(expression)-1:
+            pos += 1
+            char = expression[pos]
+            if char in self.digits:  # If the character is a digit, accumulate the number
+                currentValue = char
+                while (pos + 1 < len(expression) and expression[pos + 1] in self.digits+"."):
+                    currentValue += expression[pos + 1]
+                    char = expression[pos + 1]
+                    pos +=1
+                if "." in currentValue:  # Push the float or int value to the stack
+                    valueStack.append(float(currentValue))
+                else:
+                    valueStack.append(int(currentValue))
+
+            elif char.isalpha():
+                id = char
+                # The first char of a identifier can only be a letter but it can be followed by _ and number
+                while (pos+1 < len(expression) and 
+                       (expression[pos+1].isalpha() or 
+                        expression[pos+1] in self.digits+"_")):
+                    id += expression[pos+1]
+                    pos+=1
+                    char = expression[pos]
+
+                    #if id in precedence.keys():  # If the first three match the operator, stop to avoid conflict
+                    #    break
+                if id in precedence.keys():  # For the word being MOD or DIV
+                    while (operatorStack and operatorStack[-1] != '(' and
+                        precedence[id] <= precedence.get(operatorStack[-1], 0)):
+                        # Apply operators with higher or equal precedence from the stack
+                        applyOperator()
+                    operatorStack.append(id)
+                elif id in (self.keywords or (self.keywords).lower()):
+                    err.invaSyn(lineNo, line, int((int(line.index(id)+len(id))/2)), None)
+                elif id in self.variables.keys() or id in self.constants.keys():
+                    valueStack.append(self.getValue(id, lineNo, line))
+                elif id in self.arrays.keys():
+                    pos +=1
+                    if expression[pos] == "[":
+                        pass
+                    else:
+                        err.invaSyn(lineNo, line, (int(line.index(id)+(len(id))//2)), None, "Missing bracket")
+                    while expressionWOL[pos]!="]" and pos < len(expression)-1:
+                        id += expression[pos]
+                        pos += 1
+                    if expression[pos] == "]":
+                        id += "]"
+                    else:
+                        err.invaSyn(lineNo, line, int((int(line.index(id)+len(id))/2)), None, "Unmatched brackets")
+                    valueStack.append(self.getValue(id, lineNo, line))
+                elif id in self.functions.keys():
+                    pos +=1
+                    if expression[pos] == "(":
+                        pass
+                    else:
+                        err.invaSyn(lineNo, line, (int(line.index(id)+(len(id))//2)), None, "Missing bracket")
+                    while expressionWOL[pos]!=")" and pos < len(expression)-1:
+                        id += expression[pos]
+                        pos += 1
+                    if expression[pos] == ")":
+                        id += ")"
+                    else:
+                        err.invaSyn(lineNo, line, int((int(line.index(id)+len(id))/2)), None, "Unmatched brackets")
+                    valueStack.append(self.getValue(id, lineNo, line))
+                elif id in self.procedures.keys():
+                    err.invaSyn(lineNo, line, int(line.find(id)/2), "A procedure has no return value")
+                else:
+                    err.nameErr(lineNo, line, int((int(line.index(id))+len(id)/2)), id)
+                type = self.getType(id, lineNo, line)
+                if not(type == "INTEGER" or "REAL"):
+                    err.typeErr(lineNo, line, int((int(line.index(id)+len(id))/2)), id, "INTEGER or REAL")
+
+            elif char == '(':  # If the character is an opening parenthesis, push it to the operator stack
+                operatorStack.append(char)
+
+            elif char == ')':  # If the character is a closing parenthesis
+                if not operatorStack or '(' not in operatorStack:
+                    err.invaSyn(lineNo, line, pos, None, "Mismatched parentheses")
+                while operatorStack and operatorStack[-1] != '(': 
+                    applyOperator()  # Apply operators until the opening parenthesis is encountered
+                    if not operatorStack:
+                        err.invaSyn(lineNo, line, pos, None, "Mismatched parentheses")
+                if operatorStack and operatorStack[-1] == '(':
+                    operatorStack.pop()  # Pop the opening parenthesis from the stack
+
+            elif char in precedence.keys():
+
+                # See if the operator is valid
+                if not(expression[pos+1] in self.digits or expression[pos+1].isalpha()):
+                    err.invaSyn(lineNo, line, pos+1)
+
+                # If the character is an operator
+                while (operatorStack and operatorStack[-1] != '(' and
+                        precedence[char] <= precedence.get(operatorStack[-1], 0)):
+                    applyOperator()   # Apply operators with higher or equal precedence from the stack
+                operatorStack.append(char)
+
+            else:
+                err.typeErr(lineNo, line, pos, char, "INTEGER or REAL")
+        while operatorStack:  # Apply any remaining operators in the stack
+            applyOperator()
+        return valueStack[0]  # The final value in the value stack is the result
+
     
     def evalRelation(self, expression, lineNo, line):
         pos = -1
         id = ""
+        expressionWOL = self.removeLiteral(expression, lineNo, line)
         while pos < len(expression)-1:
             pos += 1
             c = expression[pos]
-            if c in "><=":
+            cW = expressionWOL[pos]
+            if cW in "><=":
                 left = id.strip()
                 id = ""
-                if c == "<":
+                if cW == "<":
                     if expression[pos+1] in ">=":
                         op = "<"+expression[pos+1]
                         pos+=1
                     else:
                         op = "<"
-                elif c == ">":
+                elif cW == ">":
                     if expression[pos+1] == "=":
                         op = ">="
                         pos+=1
                     else:
                         op = ">"
-                elif c == "=":
+                elif cW == "=":
                     op = "="
             else:
                 id += c
