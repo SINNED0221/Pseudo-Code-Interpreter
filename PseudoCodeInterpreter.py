@@ -426,6 +426,7 @@ class interpreter:
             
 
     def removeLiteral(self, token, lineNo, line):
+        
         tokenWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
         pos = -1
         while pos < len(token)-1:
@@ -509,17 +510,42 @@ class interpreter:
     def getValue(self, identifier, lineNo, line):
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
         if any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
-            return self.evalExpr(identifier, lineNo, line)
-        elif "&" in identifierWOLiteral:  # apart from string literal, there is a &
+            valid = False
+            for op in self.operators[4:]:
+                pos = identifierWOLiteral.find(op)
+                while pos != -1:
+                    if (not self.isValidChar(identifierWOLiteral[pos-1]) and
+                        not identifierWOLiteral[pos+3].isalpha()):
+                        valid = True
+                    pos = identifierWOLiteral.find(op, pos+1)
+            if valid:
+                return self.evalExpr(identifier, lineNo, line)
+            else:
+                pass
+        elif any(op in identifierWOLiteral for op in self.logicOperators):
+            valid = False
+            for op in self.logicOperators:
+                pos = identifierWOLiteral.find(op)
+                while pos != -1:
+                    if (not self.isValidChar(identifierWOLiteral[pos-1]) and
+                        not identifierWOLiteral[pos+3].isalpha()):
+                        valid = True
+                    pos = identifierWOLiteral.find(op, pos+1)
+
+            if valid:
+                return self.evalLogic(identifier, lineNo, line)
+            else:
+                pass
+        elif any(op in identifierWOLiteral for op in self.relationOperators):
+            return self.evalRelation(identifier, lineNo, line)
+
+        if "&" in identifierWOLiteral:  # apart from string literal, there is a &
             return self.strComb(identifier, lineNo, line)
         elif all(n in self.digits for n in identifier):  # it is a number
             if "." in identifier:
                 return float(identifier)
             return int(identifier)
-        elif any(op in identifierWOLiteral for op in self.logicOperators):
-            pass
-        elif any(op in identifierWOLiteral for op in self.relationOperators):
-            pass
+        
         elif identifier.startswith('"'):
             pos = 0
             quoteCount = 1
@@ -601,16 +627,7 @@ class interpreter:
 
     def getType(self, identifier, lineNo, line):
         identifier = identifier.strip()
-        identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
-        if any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
-            if type(self.evalExpr(identifier, lineNo, line)) == 'float':
-                return "REAL"
-            else:
-                return "INTEGER"
-        elif "&" in identifierWOLiteral:  # apart from string literal, there is a &
-            self.strComb(identifier, lineNo, line)
-            return "STRING"
-        elif all(n in self.digits+"." for n in identifier):  # it is a number
+        if all(n in self.digits+"." for n in identifier):  # it is a number
             if "." in identifier:
                 return "REAL"
             else:
@@ -658,12 +675,13 @@ class interpreter:
             return (self.variables[identifier]).returnType()
         elif identifier in (self.procedures).keys():
             err.invaSyn(lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
+        elif any(not self.isValidChar(c) for c in identifier):
+            return self.getType(self.getValue(identifier, lineNo, line), lineNo, line)
         else:
             err.nameErr(lineNo, line, int(line.find(identifier)/2), identifier)
 
     def evalExpr(self, expression, lineNo, line):
-        # Remove any whitespace from the expression
-        expression = expression.replace(" ", "")
+
         expressionWOL = self.removeLiteral(expression, lineNo, line)
         # Operator precedence dictionary
         precedence = {
@@ -678,6 +696,7 @@ class interpreter:
         operatorStack = []
         valueStack = []
         def applyOperator():  # Helper functions for arithmetic operations
+            
             operator = operatorStack.pop()
             operand2 = valueStack.pop()
             operand1 = valueStack.pop()
@@ -706,7 +725,9 @@ class interpreter:
         while pos < len(expression)-1:
             pos += 1
             char = expression[pos]
-            if char in self.digits:  # If the character is a digit, accumulate the number
+            if char == " ":  # Remove any whitespace from the expression
+                pass
+            elif char in self.digits:  # If the character is a digit, accumulate the number
                 currentValue = char
                 while (pos + 1 < len(expression) and expression[pos + 1] in self.digits+"."):
                     currentValue += expression[pos + 1]
@@ -724,8 +745,9 @@ class interpreter:
                     id += expression[pos+1]
                     pos+=1
                     char = expression[pos]
-
-                    if id in precedence.keys():  # If the first three match the operator, stop to avoid conflict
+                    
+                    if id in precedence.keys() and not self.isValidChar(expression[pos-3]) and not expression[pos+1].isalpha():  
+                        # If the first three match the operator, stop to avoid conflict
                         break
                 if id in precedence.keys():  # For the word being MOD or DIV
                     while (operatorStack and operatorStack[-1] != '(' and
@@ -768,7 +790,6 @@ class interpreter:
                 elif id in self.procedures.keys():
                     err.invaSyn(lineNo, line, int(line.find(id)/2), "A procedure has no return value")
                 else:
-                    print(id)
                     err.nameErr(lineNo, line, line.index(id)+(len(id)//2), id)
                 if not(id in precedence.keys()):
                     type = self.getType(id, lineNo, line)
@@ -806,9 +827,8 @@ class interpreter:
             applyOperator()
         return valueStack[0]  # The final value in the value stack is the result
 
-    def evalLogic(self, expression, lineNo, line):
-        # Remove any whitespace from the expression
-        expression = expression.replace(" ", "")
+    def evalExpr(self, expression, lineNo, line):
+
         expressionWOL = self.removeLiteral(expression, lineNo, line)
         # Operator precedence dictionary
         precedence = {
@@ -820,45 +840,37 @@ class interpreter:
         operatorStack = []
         valueStack = []
         def applyOperator():  # Helper functions for arithmetic operations
+            
             operator = operatorStack.pop()
             operand2 = valueStack.pop()
             operand1 = valueStack.pop()
 
-            if operator == 'AND':
-                valueStack.append(operand1 and operand2)
-            elif operator == 'OR':
+            if operator == 'OR':
                 valueStack.append(operand1 or operand2)
+            elif operator == 'AND':
+                valueStack.append(operand1 and operand2)
             elif operator == 'NOT':
-                valueStack.append([operand1, not operand2])
+                valueStack.append(operand1)
+                valueStack.append(not operand2)
 
 
+        # Iterate through each character in the expression using a position pointer
         pos = -1
         while pos < len(expression)-1:
             pos += 1
             char = expression[pos]
-            if char in self.digits:  # If the character is a digit, accumulate the number
-                currentValue = char
-                while (pos + 1 < len(expression) and expression[pos + 1] in self.digits+"."):
-                    currentValue += expression[pos + 1]
-                    char = expression[pos + 1]
-                    pos +=1
-                if "." in currentValue:  # Push the float or int value to the stack
-                    valueStack.append(float(currentValue))
-                else:
-                    valueStack.append(int(currentValue))
 
-            elif char.isalpha():
+            if char.isalpha():
                 id = char
                 # The first char of a identifier can only be a letter but it can be followed by _ and number
-                while (pos+1 < len(expression) and 
-                       (expression[pos+1].isalpha() or 
-                        expression[pos+1] in self.digits+"_")):
+                while (pos+1 < len(expression) and self.isValidChar(expression[pos+1])):
                     id += expression[pos+1]
                     pos+=1
                     char = expression[pos]
-
-                    #if id in precedence.keys():  # If the first three match the operator, stop to avoid conflict
-                    #    break
+                    
+                    if id in precedence.keys() and not self.isValidChar(expression[pos-3]) and not expression[pos+1].isalpha():  
+                        # If the first three match the operator, stop to avoid conflict
+                        break
                 if id in precedence.keys():  # For the word being MOD or DIV
                     while (operatorStack and operatorStack[-1] != '(' and
                         precedence[id] <= precedence.get(operatorStack[-1], 0)):
@@ -900,10 +912,11 @@ class interpreter:
                 elif id in self.procedures.keys():
                     err.invaSyn(lineNo, line, int(line.find(id)/2), "A procedure has no return value")
                 else:
-                    err.nameErr(lineNo, line, int((int(line.index(id))+len(id)/2)), id)
-                type = self.getType(id, lineNo, line)
-                if not(type == "INTEGER" or "REAL"):
-                    err.typeErr(lineNo, line, int((int(line.index(id)+len(id))/2)), id, "INTEGER or REAL")
+                    err.nameErr(lineNo, line, line.index(id)+(len(id)//2), id)
+                if not(id in precedence.keys()):
+                    type = self.getType(id, lineNo, line)
+                    if not(type == "INTEGER" or "REAL"):
+                        err.typeErr(lineNo, line, line.index(id)+(len(id)//2), id, "INTEGER or REAL")
 
             elif char == '(':  # If the character is an opening parenthesis, push it to the operator stack
                 operatorStack.append(char)
