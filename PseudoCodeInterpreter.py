@@ -467,7 +467,7 @@ class interpreter:
         else:
             err.typeErr(lineNo, line, 3, expression, "BOOLEAN")
         
-        ifLines, elseLines, temp = [], [], []
+        temp =[]
         elsePos, endPos = 0, 0
         pos = selfPos-1
         indentation = 0
@@ -517,7 +517,100 @@ class interpreter:
         return skip
 
     def exeCase(self, lineNo, line, lines, selfPos):
-        pass
+        if not(line.startswith("CASE OF")):
+            err.invaSyn(lineNo, line, 3, None, "Should be CASE OF")
+        identifier = line[7:].strip()
+        value = self.getValue(identifier, lineNo, line)
+        type = self.getType(identifier, lineNo, line)
+
+        linesToExe =[]
+        pos = selfPos-1
+        indentation = 0
+        skip = 0
+        endCase = False
+
+        while pos < len(lines)-1:
+            skip += 1
+            pos += 1
+            subLine = lines[pos]
+            if subLine == "ENDCASE":
+                endCase = True
+                subLines = lines[selfPos: pos+1]
+                break
+            else:
+                pass
+        if not endCase:
+            err.invaSyn(lineNo, line, -1, None, "ENDCASE expected")
+        pos = -1
+
+        
+        while pos < len(subLines)-1:
+             pos += 1
+             subLine = subLines[pos]
+             if subLine.startswith(" "):
+                if indentation == 0:
+                    for c in subLine:
+                        if c == " ":
+                            indentation += 1
+                        else:
+                            break
+                else:
+                    if subLine.startswith(" "*indentation):
+                        pass
+                    else:
+                        err.indentErr(lineNo+pos, subLine, 0, None, "Unexpected indent")
+                subLine = subLine[indentation:]
+                if not(subLine.startswith(" ")):
+                    valueEql = False
+                    if subLine.find(":") == -1:
+                        err.invaSyn(lineNo+pos, subLine, -1, None, "Missing colon")
+                    caseStr = subLine[0:subLine.find(":")]
+                    caseWOL = self.removeLiteral(caseStr, lineNo+pos, subLine)
+                    if "TO" in caseWOL:
+                        left = self.getValue(caseStr[0:caseWOL.find("TO")].strip(), lineNo+pos, subLine)
+                        right = self.getValue(caseStr[caseWOL.find("TO")+2:].strip(), lineNo+pos, subLine)
+                        if left > right:
+                            temp = left
+                            left = right
+                            right = temp
+                        if left <= value <= right:
+                            valueEql = True
+                    elif caseStr.strip() == "OTHERWISE":
+                        valueEql = True
+                    else:
+                        caseValue = self.getValue(caseStr, lineNo+pos, subLine)
+                        if caseValue == value:
+                            valueEql = True
+                    
+                    if valueEql:
+                        startPos = lineNo + pos + 1
+                        subIndent = subLine.find(":")
+                        subLine = subLine[subLine.find(":")+1:]
+                        for c in subLine:
+                            if c == " ":
+                                subIndent += 1
+                                subLine = subLine[1:]
+                            else:
+                                break
+                        linesToExe.append(subLine)
+                        subIndent = indentation + subIndent + 1
+                        while pos < len(subLines)-1:
+                            pos += 1
+                            subLine = subLines[pos]
+                            if subLine.startswith(" "*subIndent):
+                                subLine = subLine[subIndent:]
+                                linesToExe.append(subLine)
+                            elif not(subLine[indentation:].startswith(" ")):
+                                self.run(linesToExe, startPos, 1)
+                                return skip
+                            else:
+                                err.indentErr(lineNo+pos, subLine, -1, None, "Unexpected indent")
+                    else:
+                        pass
+        return skip
+
+
+
 
     def removeLiteral(self, token, lineNo, line):
         
