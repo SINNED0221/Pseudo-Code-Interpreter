@@ -36,6 +36,14 @@ class error:
         if description:
              printRed (description)
         quit()
+    def indentErr(self, lineNo, line, pos, detail = None, description = None):
+        printRed ("Indentation Error: at line " + str(lineNo))
+        printRed ("\t" + str(line))
+        if pos > -1:
+            printRed ("\t" + " "*pos + "^" )
+        if description:
+             printRed (description)     
+        quit()
 
 err = error()
 class interpreter:
@@ -95,7 +103,7 @@ class interpreter:
             'ENDTYPE',
             'ENDWHILE',
             'EOF',
-            'FALSE',
+            #'FALSE',
             'FOR',
             'TO',
             'FUNCTION',
@@ -134,7 +142,7 @@ class interpreter:
             'STRING',
             'SUPER',
             'THEN',
-            'TRUE',
+            #'TRUE',
             'TYPE',
             'UCASE',
             'UNTIL',
@@ -151,13 +159,19 @@ class interpreter:
                     "DATE"
                       ]
 
-    def run(self, code):
+    def initRun(self, code):
         lines = code.split("\n")
-        lineNo = -1
-        while lineNo < len(lines)-1:
-            lineNo += 1
-            line = lines[lineNo]
-            self.executeLine(line.strip(), lineNo+1)
+        self.run(lines, 1, 1)
+
+    def run(self, lines, innitialPos, selfPos):
+        lineNo = innitialPos-1
+        selfPos = selfPos-1
+        while lineNo - innitialPos < len(lines)-1:
+            lineNo += 1  
+            selfPos += 1  # this is the position of the line in its subcode block
+            line = lines[lineNo-innitialPos]
+            skip = self.executeLine(line.strip(), lineNo, lines, selfPos)
+            lineNo += skip  # tell the interpreter to go after the nested statement
             
     
     def error(self, errType, lineNo, line, pos, detail = None, description = None):
@@ -195,7 +209,8 @@ class interpreter:
 
     def isArray(self, identifier, lineNo, line):
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
-        if ("[" and "]") in identifierWOLiteral and ((identifier[0: identifier.find("[")]) in self.arrays.keys()):
+        identifierWOLiteral = identifierWOLiteral.strip()
+        if ("[" and "]") in identifierWOLiteral and ((identifier[0: identifier.find("[")]) in self.arrays.keys() and identifierWOLiteral.endswith("]")):
             identifier = identifier.strip()
             name = identifier[0: identifier.find("[")]
             name = name.strip()
@@ -204,13 +219,21 @@ class interpreter:
             for i, index in zip(range(len(indexes)), indexes):
                 indexes[i] = self.getValue(index, lineNo, line)
             return [True, name, indexes]
-
-
-
+        
         else:
             return [False, None]
+    
+    def boolConvert(self, input):
+        if input == "TRUE":
+            return True
+        elif input == "FALSE":
+            return False
+        elif input == True:
+            return "TRUE"
+        elif input == False:
+            return "FALSE"
 
-    def executeLine(self, line, lineNo):
+    def executeLine(self, line, lineNo, lines, selfPos):
         if "//" in line:  # get rid of comments
             line = line[0 : line.find("//")]
         line = line.replace("<-", "←")
@@ -225,16 +248,22 @@ class interpreter:
             identifier += char
         if identifier == "OUTPUT":
             self.exeOutput(lineNo, line)
+            return 0
         elif identifier == "DECLARE":
             self.exeDeclare(lineNo, line)
+            return 0
         elif identifier == "CONSTANT":
             self.exeConstant(lineNo, line)
+            return 0
         elif identifier == "INPUT":
             self.exeInput(lineNo, line)
+            return 0
+        elif identifier == "IF":
+            return self.exeIf(lineNo, line, lines, selfPos)
 
         elif identifier in self.identifiers:
             self.exeAssign(lineNo, line)
-
+            return 0
         else:
             err.invaSyn(lineNo, line, -1)
 
@@ -379,7 +408,7 @@ class interpreter:
                 elif identifier in (self.keywords or (self.keywords).lower()):
                     err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
                 self.identifiers.append(identifier)
-                self.arrays[identifier] = array(identifier, type, bounds)
+                self.arrays[identifier] = array(identifier, typeStr, bounds)
         else:
             err.invaSyn(lineNo, line, int(line.find(type)/2), "Invalid Data Type")
 
@@ -423,7 +452,64 @@ class interpreter:
                 self.arrays[self.isArray(left, lineNo, line)[1]].injectValue(self.isArray(left, lineNo, line)[2], right, lineNo, line)
             else:
                 err.nameErr(lineNo, line, (line.find(left)+len(left))//2, left)
-            
+
+    def exeIf(self, lineNo, line, lines, selfPos):
+        line = line.strip()
+        if not(line.endswith("THEN")) or self.isValidChar(line[len(line)-5]):
+            err.invaSyn(lineNo, line, len(line), None, "THEN expected")
+        
+        expression = line[2:len(line)-5].strip()
+        if self.getType(expression, lineNo, line) == "BOOLEAN":
+            ifOrElse = self.boolConvert(self.getValue(expression, lineNo, line))
+        else:
+            err.typeErr(lineNo, line, 3, expression, "BOOLEAN")
+        
+        ifLines, elseLines, temp = [], [], []
+        pos = selfPos-1
+        indentation = 0
+        skip = 0
+        endIf = False
+        while pos < len(lines)-1:
+            skip += 1
+            pos += 1
+            subLine = lines[pos]
+            if subLine.startswith(" "):
+                if indentation == 0:
+                    for c in subLine:
+                        if c == " ":
+                            indentation += 1
+                        else:
+                            break
+                else:
+                    if subLine.startswith(" "*indentation):
+                        pass
+                    else:
+                        err.indentErr(lineNo, line, 0, None, "Unexpected indent")
+                subLine = subLine[indentation:]
+                temp.append(subLine)
+            elif subLine == "ELSE":
+                ifLines = temp
+                temp = []
+            elif subLine == "ENDIF":
+                endIf = True
+                if ifLines:
+                    elseLines = temp
+                else:
+                    ifLines = temp
+            else:
+                err.indentErr(lineNo, line, 0, None, "Indent expected")
+        if not endIf:
+            err.invaSyn(lineNo, line, -1, None, "ENDIF expected")
+        if ifOrElse:
+            self.run(ifLines, lineNo+1, 1)
+        else:
+            if elseLines:
+                self.run(elseLines, lineNo+1, 1)
+            else:
+                pass
+        return skip
+
+
 
     def removeLiteral(self, token, lineNo, line):
         
@@ -509,6 +595,8 @@ class interpreter:
 
     def getValue(self, identifier, lineNo, line):
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
+        if not identifier:
+            return identifier
         if any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
             valid = False
             for op in self.operators[4:]:
@@ -522,13 +610,13 @@ class interpreter:
                 return self.evalExpr(identifier, lineNo, line)
             else:
                 pass
-        elif any(op in identifierWOLiteral for op in self.logicOperators):
+        if any(op in identifierWOLiteral for op in self.logicOperators):
             valid = False
             for op in self.logicOperators:
                 pos = identifierWOLiteral.find(op)
                 while pos != -1:
-                    if (not self.isValidChar(identifierWOLiteral[pos-1]) and
-                        not identifierWOLiteral[pos+3].isalpha()):
+                    if ((not self.isValidChar(identifierWOLiteral[pos-1]) or pos-1 == -1) and
+                        not identifierWOLiteral[pos+len(op)].isalpha()):
                         valid = True
                     pos = identifierWOLiteral.find(op, pos+1)
 
@@ -536,7 +624,7 @@ class interpreter:
                 return self.evalLogic(identifier, lineNo, line)
             else:
                 pass
-        elif any(op in identifierWOLiteral for op in self.relationOperators):
+        if any(op in identifierWOLiteral for op in self.relationOperators):
             return self.evalRelation(identifier, lineNo, line)
 
         if "&" in identifierWOLiteral:  # apart from string literal, there is a &
@@ -587,6 +675,8 @@ class interpreter:
             return (self.variables[identifier]).returnValue()
         elif identifier in (self.procedures).keys():
             err.invaSyn(lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
+        elif identifier in ["TRUE", "FALSE"]:
+            return identifier
         else:
             err.nameErr(lineNo, line, int(line.find(identifier)/2), identifier)
 
@@ -626,7 +716,11 @@ class interpreter:
 
 
     def getType(self, identifier, lineNo, line):
+        
         identifier = identifier.strip()
+
+        ###Literals###
+
         if all(n in self.digits+"." for n in identifier):  # it is a number
             if "." in identifier:
                 return "REAL"
@@ -660,6 +754,11 @@ class interpreter:
                 err.typeErr(lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
             else:
                 return "CHAR"
+        elif identifier in ["TRUE", "FALSE"]:
+            return "BOOLEAN"
+        
+        ###identifiers###
+
         elif identifier in (self.keywords or (self.keywords).lower()):
             err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
@@ -827,7 +926,7 @@ class interpreter:
             applyOperator()
         return valueStack[0]  # The final value in the value stack is the result
 
-    def evalExpr(self, expression, lineNo, line):
+    def evalLogic(self, expression, lineNo, line):
 
         expressionWOL = self.removeLiteral(expression, lineNo, line)
         # Operator precedence dictionary
@@ -839,48 +938,64 @@ class interpreter:
         # Stack to hold operators and values
         operatorStack = []
         valueStack = []
+
+
+
         def applyOperator():  # Helper functions for arithmetic operations
-            
             operator = operatorStack.pop()
             operand2 = valueStack.pop()
-            operand1 = valueStack.pop()
+            if valueStack != []:
+                operand1 = valueStack.pop()
+                operand1 = self.boolConvert(operand1)
+            else:
+                operand1 = ""
+            operand2 = self.boolConvert(operand2)
 
             if operator == 'OR':
-                valueStack.append(operand1 or operand2)
+                valueStack.append(self.boolConvert(operand1 or operand2))
             elif operator == 'AND':
-                valueStack.append(operand1 and operand2)
+                valueStack.append(self.boolConvert(operand1 and operand2))
             elif operator == 'NOT':
-                valueStack.append(operand1)
-                valueStack.append(not operand2)
+                if operand1:
+                    valueStack.append(boolConvert(operand1))
+                valueStack.append(self.boolConvert(not operand2))
 
 
         # Iterate through each character in the expression using a position pointer
         pos = -1
+        oprand = ""
         while pos < len(expression)-1:
             pos += 1
             char = expression[pos]
-
-            if char.isalpha():
+            
+            if char == " ":
+                pass
+            elif char.isalpha():
                 id = char
                 # The first char of a identifier can only be a letter but it can be followed by _ and number
                 while (pos+1 < len(expression) and self.isValidChar(expression[pos+1])):
                     id += expression[pos+1]
                     pos+=1
                     char = expression[pos]
-                    
                     if id in precedence.keys() and not self.isValidChar(expression[pos-3]) and not expression[pos+1].isalpha():  
                         # If the first three match the operator, stop to avoid conflict
                         break
-                if id in precedence.keys():  # For the word being MOD or DIV
+                if id in precedence.keys():
+                    if oprand:
+                        if self.getType(oprand, lineNo, line) != "BOOLEAN":
+                            err.typeErr(lineNo, line, expression.find(oprand)+len(oprand)//2, oprand, "BOOLEAN")
+                        valueStack.append(self.getValue(oprand, lineNo, line))
+                        oprand = ""
                     while (operatorStack and operatorStack[-1] != '(' and
                         precedence[id] <= precedence.get(operatorStack[-1], 0)):
                         # Apply operators with higher or equal precedence from the stack
                         applyOperator()
                     operatorStack.append(id)
+
                 elif id in (self.keywords or (self.keywords).lower()):
                     err.invaSyn(lineNo, line, int((int(line.index(id)+len(id))/2)), None)
                 elif id in self.variables.keys() or id in self.constants.keys():
-                    valueStack.append(self.getValue(id, lineNo, line))
+                    oprand += id
                 elif id in self.arrays.keys():
                     pos +=1
                     if expression[pos] == "[":
@@ -894,7 +1009,7 @@ class interpreter:
                         id += "]"
                     else:
                         err.invaSyn(lineNo, line, int((int(line.index(id)+len(id))/2)), None, "Unmatched brackets")
-                    valueStack.append(self.getValue(id, lineNo, line))
+                    oprand += id
                 elif id in self.functions.keys():
                     pos +=1
                     if expression[pos] == "(":
@@ -908,20 +1023,28 @@ class interpreter:
                         id += ")"
                     else:
                         err.invaSyn(lineNo, line, int((int(line.index(id)+len(id))/2)), None, "Unmatched brackets")
-                    valueStack.append(self.getValue(id, lineNo, line))
+                    oprand += id
                 elif id in self.procedures.keys():
                     err.invaSyn(lineNo, line, int(line.find(id)/2), "A procedure has no return value")
                 else:
-                    err.nameErr(lineNo, line, line.index(id)+(len(id)//2), id)
-                if not(id in precedence.keys()):
-                    type = self.getType(id, lineNo, line)
-                    if not(type == "INTEGER" or "REAL"):
-                        err.typeErr(lineNo, line, line.index(id)+(len(id)//2), id, "INTEGER or REAL")
+                    oprand += id
+                    
 
             elif char == '(':  # If the character is an opening parenthesis, push it to the operator stack
+                if oprand:
+                    if oprand:
+                        if self.getType(oprand, lineNo, line) != "BOOLEAN":
+                            err.typeErr(lineNo, line, expression.find(oprand)+len(oprand)//2, oprand, "BOOLEAN")
+                        valueStack.append(self.getValue(oprand, lineNo, line))
+                        oprand = ""
                 operatorStack.append(char)
 
             elif char == ')':  # If the character is a closing parenthesis
+                if oprand:
+                        if self.getType(oprand, lineNo, line) != "BOOLEAN":
+                            err.typeErr(lineNo, line, expression.find(oprand)+len(oprand)//2, oprand, "BOOLEAN")
+                        valueStack.append(self.getValue(oprand, lineNo, line))
+                        oprand = ""
                 if not operatorStack or '(' not in operatorStack:
                     err.invaSyn(lineNo, line, pos, None, "Mismatched parentheses")
                 while operatorStack and operatorStack[-1] != '(': 
@@ -931,20 +1054,13 @@ class interpreter:
                 if operatorStack and operatorStack[-1] == '(':
                     operatorStack.pop()  # Pop the opening parenthesis from the stack
 
-            elif char in precedence.keys():
-
-                # See if the operator is valid
-                if not(expression[pos+1] in self.digits or expression[pos+1].isalpha()):
-                    err.invaSyn(lineNo, line, pos+1)
-
-                # If the character is an operator
-                while (operatorStack and operatorStack[-1] != '(' and
-                        precedence[char] <= precedence.get(operatorStack[-1], 0)):
-                    applyOperator()   # Apply operators with higher or equal precedence from the stack
-                operatorStack.append(char)
-
             else:
-                err.typeErr(lineNo, line, pos, char, "INTEGER or REAL")
+                oprand += char
+        if oprand:
+            if self.getType(oprand, lineNo, line) != "BOOLEAN":
+                err.typeErr(lineNo, line, expression.find(oprand)+len(oprand)//2, oprand, "BOOLEAN")
+            valueStack.append(self.getValue(oprand, lineNo, line))
+            oprand = ""
         while operatorStack:  # Apply any remaining operators in the stack
             applyOperator()
         return valueStack[0]  # The final value in the value stack is the result
@@ -977,7 +1093,7 @@ class interpreter:
                     op = "="
             else:
                 id += c
-        right = id.strip
+        right = id.strip()
         left = self.getValue(left, lineNo, line)
         right = self.getValue(right, lineNo, line)
         if op == ">":
