@@ -45,7 +45,7 @@ class error:
              printRed (description)     
         quit()
 
-err = error()
+#err = error()
 class interpreter:
     def __init__(self):
         self.identifiers = []
@@ -260,6 +260,9 @@ class interpreter:
             return 0
         elif identifier == "IF":
             return self.exeIf(lineNo, line, lines, selfPos)
+        elif identifier == "CASE":
+            return self.exeCase(lineNo, line, lines, selfPos)
+        
 
         elif identifier in self.identifiers:
             self.exeAssign(lineNo, line)
@@ -465,6 +468,7 @@ class interpreter:
             err.typeErr(lineNo, line, 3, expression, "BOOLEAN")
         
         ifLines, elseLines, temp = [], [], []
+        elsePos, endPos = 0, 0
         pos = selfPos-1
         indentation = 0
         skip = 0
@@ -473,7 +477,28 @@ class interpreter:
             skip += 1
             pos += 1
             subLine = lines[pos]
-            if subLine.startswith(" "):
+            if subLine == "ELSE":
+                elsePos = pos
+            elif subLine == "ENDIF":
+                endIf = True
+                endPos = pos
+        if not endIf:
+            err.invaSyn(lineNo, line, -1, None, "ENDIF expected")
+        if ifOrElse:
+            startPos = selfPos
+            if elsePos != 0:
+                endPos = elsePos
+            else:
+                endPos = endPos
+        else:
+            if elsePos != 0:
+                startPos = elsePos + 1
+                endPos = endPos
+            else:
+                startPos = -1
+        
+        for subLine in lines[startPos:endPos]:
+             if subLine.startswith(" "):
                 if indentation == 0:
                     for c in subLine:
                         if c == " ":
@@ -484,32 +509,15 @@ class interpreter:
                     if subLine.startswith(" "*indentation):
                         pass
                     else:
-                        err.indentErr(lineNo, line, 0, None, "Unexpected indent")
+                        err.indentErr(lineNo+pos, subLine, 0, None, "Unexpected indent")
                 subLine = subLine[indentation:]
                 temp.append(subLine)
-            elif subLine == "ELSE":
-                ifLines = temp
-                temp = []
-            elif subLine == "ENDIF":
-                endIf = True
-                if ifLines:
-                    elseLines = temp
-                else:
-                    ifLines = temp
-            else:
-                err.indentErr(lineNo, line, 0, None, "Indent expected")
-        if not endIf:
-            err.invaSyn(lineNo, line, -1, None, "ENDIF expected")
-        if ifOrElse:
-            self.run(ifLines, lineNo+1, 1)
-        else:
-            if elseLines:
-                self.run(elseLines, lineNo+1, 1)
-            else:
-                pass
+        self.run(temp, lineNo+startPos, 1)
+
         return skip
 
-
+    def exeCase(self, lineNo, line, lines, selfPos):
+        pass
 
     def removeLiteral(self, token, lineNo, line):
         
