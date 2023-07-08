@@ -45,7 +45,7 @@ class error:
              printRed (description)     
         quit()
 
-#err = error()
+err = error()
 class interpreter:
     def __init__(self):
         self.identifiers = []
@@ -170,7 +170,7 @@ class interpreter:
             lineNo += 1  
             selfPos += 1  # this is the position of the line in its subcode block
             line = lines[lineNo-innitialPos]
-            skip = self.executeLine(line.strip(), lineNo, lines, selfPos)
+            skip = self.executeLine(line.strip(), lineNo, lines, innitialPos, selfPos)
             lineNo += skip  # tell the interpreter to go after the nested statement
             
     
@@ -233,7 +233,7 @@ class interpreter:
         elif input == False:
             return "FALSE"
 
-    def executeLine(self, line, lineNo, lines, selfPos):
+    def executeLine(self, line, lineNo, lines, innitialPos, selfPos):
         if "//" in line:  # get rid of comments
             line = line[0 : line.find("//")]
         line = line.replace("<-", "←")
@@ -259,9 +259,15 @@ class interpreter:
             self.exeInput(lineNo, line)
             return 0
         elif identifier == "IF":
-            return self.exeIf(lineNo, line, lines, selfPos)
+            return self.exeIf(lineNo, line, lines, innitialPos, selfPos)
         elif identifier == "CASE":
-            return self.exeCase(lineNo, line, lines, selfPos)
+            return self.exeCase(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "FOR":
+            return self.exeFor(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "REPEAT":
+            return self.exeRepeat(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "WHILE":
+            return self.exeWhile(lineNo, line, lines, innitialPos, selfPos)
         
 
         elif identifier in self.identifiers:
@@ -456,7 +462,7 @@ class interpreter:
             else:
                 err.nameErr(lineNo, line, (line.find(left)+len(left))//2, left)
 
-    def exeIf(self, lineNo, line, lines, selfPos):
+    def exeIf(self, lineNo, line, lines, innitialPos, selfPos):
         line = line.strip()
         if not(line.endswith("THEN")) or self.isValidChar(line[len(line)-5]):
             err.invaSyn(lineNo, line, len(line), None, "THEN expected")
@@ -472,17 +478,17 @@ class interpreter:
         pos = selfPos-1
         indentation = 0
         skip = 0
-        endIf = False
+        end = False
         while pos < len(lines)-1:
             skip += 1
             pos += 1
             subLine = lines[pos]
-            if subLine == "ELSE":
+            if subLine.rstrip() == "ELSE":
                 elsePos = pos
-            elif subLine == "ENDIF":
-                endIf = True
+            elif subLine.rstrip() == "ENDIF":
+                end = True
                 endPos = pos
-        if not endIf:
+        if not end:
             err.invaSyn(lineNo, line, -1, None, "ENDIF expected")
         if ifOrElse:
             startPos = selfPos
@@ -516,7 +522,7 @@ class interpreter:
 
         return skip
 
-    def exeCase(self, lineNo, line, lines, selfPos):
+    def exeCase(self, lineNo, line, lines, innitialPos, selfPos):
         if not(line.startswith("CASE OF")):
             err.invaSyn(lineNo, line, 3, None, "Should be CASE OF")
         identifier = line[7:].strip()
@@ -527,19 +533,19 @@ class interpreter:
         pos = selfPos-1
         indentation = 0
         skip = 0
-        endCase = False
+        end = False
 
         while pos < len(lines)-1:
             skip += 1
             pos += 1
-            subLine = lines[pos]
+            subLine = lines[pos].rstrip()
             if subLine == "ENDCASE":
-                endCase = True
+                end = True
                 subLines = lines[selfPos: pos+1]
                 break
             else:
                 pass
-        if not endCase:
+        if not end:
             err.invaSyn(lineNo, line, -1, None, "ENDCASE expected")
         pos = -1
 
@@ -567,15 +573,15 @@ class interpreter:
                     caseStr = subLine[0:subLine.find(":")]
                     caseWOL = self.removeLiteral(caseStr, lineNo+pos, subLine)
                     if "TO" in caseWOL:
-                        left = self.getValue(caseStr[0:caseWOL.find("TO")].strip(), lineNo+pos, subLine)
-                        right = self.getValue(caseStr[caseWOL.find("TO")+2:].strip(), lineNo+pos, subLine)
-                        if left > right:
-                            temp = left
-                            left = right
-                            right = temp
-                        if left <= value <= right:
+                        lower = self.getValue(caseStr[0:caseWOL.find("TO")].strip(), lineNo+pos, subLine)
+                        upper = self.getValue(caseStr[caseWOL.find("TO")+2:].strip(), lineNo+pos, subLine)
+                        if lower > upper:
+                            temp = lower
+                            lower = upper
+                            upper = lower
+                        if lower <= value <= upper:
                             valueEql = True
-                    elif caseStr.strip() == "OTHERWISE":
+                    elif caseStr.rstrip() == "OTHERWISE":
                         valueEql = True
                     else:
                         caseValue = self.getValue(caseStr, lineNo+pos, subLine)
@@ -609,8 +615,196 @@ class interpreter:
                         pass
         return skip
 
+    def exeFor(self, lineNo, line, lines, innitialPos, selfPos):
+        line = line.strip()
+        
+        expression = line[3:].strip()
+        expressionWOL = self.removeLiteral(expression, lineNo, line)
 
+        if "STEP" in expressionWOL:
+            stepPos = expressionWOL.find("STEP")
+            if not(self.isValidChar(expressionWOL[stepPos-1])) and not (self.isValidChar(expressionWOL[stepPos+4])):
+                if not self.getType(expression[stepPos+4:].strip(), lineNo, line) == "INTEGER":
+                    err.typeErr(lineNo, line, line.find(expression[stepPos+4:].strip()), 
+                                expression[stepPos+4:].strip(), "INTEGER")
+                step = self.getValue(expression[stepPos+4:].strip(), lineNo, line)
+                expression = expression[0:stepPos].strip()
+            else:
+                step = 1
 
+        left = expression[0: expression.find("←")].strip()
+        right = expression[expression.find("←")+1: ].strip()
+        rightWOL = self.removeLiteral(right, lineNo, line)
+
+        leftType = self.getType(left, lineNo, line)
+        if not "TO" in rightWOL:
+            err.invaSyn(lineNo, line, line.find(right)+len(right)//2, None, "TO expected")
+        else:
+            lowerStr = right[0:rightWOL.find("TO")].strip()
+            upperStr = right[rightWOL.find("TO")+2:].strip()
+            if self.getType(lowerStr, lineNo, line) != "INTEGER":
+                err.typeErr(lineNo, line, line.find(lowerStr)+len(lowerStr)//2, lowerStr, "INTEGER")
+            if self.getType(upperStr, lineNo, line) != "INTEGER":
+                err.typeErr(lineNo, line, line.find(upperStr)+len(lowerStr)//2, upperStr, "INTEGER")    
+            lower = self.getValue(lowerStr, lineNo, line)
+            upper = self.getValue(upperStr, lineNo, line)
+        if left in (self.constants).keys():
+            err.invaSyn(lineNo, line, (line.find(left)+len(left))//2, None, "A constant is immutable")
+        elif leftType != "INTEGER":
+            err.typeErr(lineNo, line, line.find(left)+len(left)//2, left, "INTEGER")
+        elif left in (self.variables).keys():
+            pass
+        elif ((self.isArray(left, lineNo, line))[0] == True or 
+                (self.isFunc(left, lineNo, line))[0] == True or 
+                (self.isProc(left, lineNo, line)== True)):
+            err.invaSyn(lineNo, line, line.find(left)+len(left)//2, None, "A FOR loop only accept vriable as identifier")
+        else:
+            err.nameErr(lineNo, line, (line.find(left)+len(left))//2, left)
+    
+        linesToExe =[]
+        endPos = 0
+        pos = selfPos-1
+        startPos = selfPos
+        indentation = 0
+        skip = 0
+        end = False
+        while pos < len(lines)-1:
+            skip += 1
+            pos += 1
+            subLine = lines[pos]
+            if subLine == "NEXT "+str(left):
+                end = True
+                endPos = pos
+                break
+        if not end:
+            err.invaSyn(lineNo, line, -1, None, "Invalid NEXT")
+
+        for subLine, pos in zip(lines[startPos:endPos], range(endPos - startPos)):
+            if subLine.startswith(" "):
+               if indentation == 0:
+                   for c in subLine:
+                       if c == " ":
+                           indentation += 1
+                       else:
+                           break
+               else:
+                   if subLine.startswith(" "*indentation):
+                       pass
+                   else:
+                       err.indentErr(lineNo+pos, subLine, 0, None, "Unexpected indent")
+               subLine = subLine[indentation:]
+               linesToExe.append(subLine)
+        
+        for i in range (lower, upper, step):
+            self.variables[left].value = i
+            self.run(linesToExe, lineNo+startPos, 1)
+        return skip
+
+    def exeRepeat(self, lineNo, line, lines, innitialPos, selfPos):
+        line = line.rstrip()
+        if line != "REPEAT":
+            err.invaSyn(lineNo, line, 4, None, "Should be REPEAT")
+    
+        linesToExe =[]
+        endPos = 0
+        pos = selfPos-1
+        startPos = selfPos
+        indentation = 0
+        skip = 0
+        end = False
+        while pos < len(lines)-1:
+            skip += 1
+            pos += 1
+            subLine = lines[pos]
+            if subLine.startswith("UNTIL"):
+                if not(self.isValidChar(subLine[5])):
+                    end = True
+                    endPos = pos
+                    expression = subLine[5:].strip()
+                    endLine = subLine
+                else:
+                    err.invaSyn(innitialPos+pos, subLine, -1, None, "Invalid UNTIL")
+                
+                break
+        if not end:
+            err.invaSyn(lineNo, line, -1, None, "UNTIL expected")
+
+        for subLine, pos in zip(lines[startPos:endPos], range(endPos - startPos)):
+            if subLine.startswith(" "):
+               if indentation == 0:
+                   for c in subLine:
+                       if c == " ":
+                           indentation += 1
+                       else:
+                           break
+               else:
+                   if subLine.startswith(" "*indentation):
+                       pass
+                   else:
+                       err.indentErr(lineNo+pos, subLine, 0, None, "Unexpected indent")
+               subLine = subLine[indentation:]
+               linesToExe.append(subLine)
+        self.run(linesToExe, lineNo+startPos, 1)
+        
+        if self.getType(expression, endPos+1, endLine) != "BOOLEAN":
+            err.typeErr(endPos+1, endLine, subLine.find(expression)+len(expression)//2, expression, "BOOLEAN")
+        until = self.boolConvert(self.getValue(expression, endPos+1, endLine))
+        while not until:
+            self.run(linesToExe, lineNo+startPos, 1)
+            until = self.boolConvert(self.getValue(expression, endPos+1, endLine))
+        
+        return skip
+
+    def exeWhile(self, lineNo, line, lines, innitialPos, selfPos):
+        line = line.rstrip()
+        expression = line[5:].strip()
+        whileLine = line
+    
+        linesToExe =[]
+        endPos = 0
+        pos = selfPos-1
+        startPos = selfPos
+        indentation = 0
+        skip = 0
+        end = False
+        while pos < len(lines)-1:
+            skip += 1
+            pos += 1
+            subLine = lines[pos]
+            if subLine.startswith("ENDWHILE"):
+                if subLine.rstrip() != "ENDWHILE":
+                    err.invaSyn(innitialPos + pos, subLine, -1, None, "Should be ENDWHILE")
+                end = True
+                endPos = pos
+                break
+        if not end:
+            err.invaSyn(lineNo, line, -1, None, "ENDWHILE expected")
+
+        for subLine, pos in zip(lines[startPos:endPos], range(endPos - startPos)):
+            if subLine.startswith(" "):
+               if indentation == 0:
+                   for c in subLine:
+                       if c == " ":
+                           indentation += 1
+                       else:
+                           break
+               else:
+                   if subLine.startswith(" "*indentation):
+                       pass
+                   else:
+                       err.indentErr(selfPos + pos+1, subLine, 0, None, "Unexpected indent")
+               subLine = subLine[indentation:]
+               linesToExe.append(subLine)
+        
+        if self.getType(expression, startPos, whileLine) != "BOOLEAN":
+            err.typeErr(startPos, whileLine, subLine.find(expression)+len(expression)//2, expression, "BOOLEAN")
+        whileBool = self.boolConvert(self.getValue(expression, startPos, whileLine))
+        while whileBool:
+            self.run(linesToExe, lineNo+1, 1)
+            whileLine = self.boolConvert(self.getValue(expression, endPos+1, whileLine))
+
+        return skip
+        
 
     def removeLiteral(self, token, lineNo, line):
         
