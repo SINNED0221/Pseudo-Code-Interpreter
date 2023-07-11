@@ -58,7 +58,7 @@ class error:
 class interpreter:
     def __init__(self):
 
-        self.err = error()
+        #self.err = error()
 
         self.identifiers = []
         self.variables = {}
@@ -227,10 +227,9 @@ class interpreter:
         elif identifier == "FUNCTION":
             return self.exeFunction(lineNo, line, lines, innitialPos, selfPos)
         elif identifier == "PROCEDURE":
-            return self.exeProcudure(lineNo, line, lines, innitialPos, selfPos)
-        elif identifier == "RETURN":
-            self.exeReturn(lineNo, line)
-            return 0 
+            return self.exeProcedure(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "RETURN":  # return the value in skip as a list[skip, returnValue]
+            return self.exeReturn(lineNo, line)
         elif identifier == "CALL":
             self.exeCall(lineNo, line)
             return 0
@@ -300,11 +299,6 @@ class interpreter:
             name = identifier[0: identifier.find("(")]
             name = name.strip()
             argStr = identifier[identifier.find("(")+1: -1].strip()
-            if argStr.startswith("BYREF"):
-                self.err.invaSyn(lineNo, line, line.find("BYREF")+len("BYREF")//2, None, 
-                                 "Parameters should not be passed by reference to a function")
-            elif argStr.startswith("BYVAL"):
-                argStr = argStr[5:0].strip()
             args = self.commaSplit(argStr, lineNo, line)
             if len(args)!= len(self.functions[name].parameters):
                 self.err.argErr(lineNo, line, line.find(args[-1])+len(args[-1])//2, identifier, 
@@ -321,17 +315,14 @@ class interpreter:
             identifier = identifier.strip()
             name = identifier[0: identifier.find("(")]
             name = name.strip()
-            byref = False
+            byref = self.procedures[name].byref
             argStr = identifier[identifier.find("(")+1: -1].strip()
-            if argStr.startswith("BYREF"):
-                byref = True
-                argStr = argStr[5:0].strip()
-            elif argStr.startswith("BYVAL"):
-                argStr = argStr[5:0].strip()
+
             args = self.commaSplit(argStr, lineNo, line)
-            if len(args)!= len(self.procedures[identifier].parameters):
+
+            if len(args)!= len(self.procedures[name].parameters):
                 self.err.argErr(lineNo, line, line.find(args[-1])+len(args[-1])//2, identifier, 
-                                len(self.procedures[identifier].parameters)-len(args))
+                                len(self.procedures[name].parameters)-len(args))
             if not byref:
                 for i, arg in zip(range(len(args)), args):
                     args[i] = self.getValue(arg, lineNo, line)
@@ -341,6 +332,10 @@ class interpreter:
                         self.err.nameErr(lineNo, line, -1, arg, "VARIABLE")
                     args[i] = self.variables[arg]
             return ["PROC", name, args, byref]
+        elif identifierWOLiteral in self.functions.keys() and self.functions[identifierWOLiteral].parameters == {}:
+            return ["FUNC", identifierWOLiteral, [], False]
+        elif identifierWOLiteral in self.procedures.keys() and self.procedures[identifierWOLiteral].parameters == {}:
+            return ["PROC", identifierWOLiteral, [], False]
         else:
             return [False, None, None, None]
     
@@ -953,6 +948,12 @@ class interpreter:
         else:
             self.err.invaSyn(lineNo, line, -1, None, "RETURNS expected")
 
+        if parasStr.startswith("BYREF"):
+                self.err.invaSyn(lineNo, line, line.find("BYREF")+len("BYREF")//2, None, 
+                                 "Parameters should not be passed by reference to a function")
+        elif parasStr.startswith("BYVAL"):
+            parasStr = parasStr[5:].strip()
+
         paras = {}
 
         if parasStr:
@@ -1035,7 +1036,6 @@ class interpreter:
         identifier = line[9:pos+1].strip()
         parasStr = ""
         token = ""
-        returns = False
         while pos < len(line)-1:
             pos += 1
             char = lineWOL[pos]
@@ -1050,14 +1050,14 @@ class interpreter:
             else:
                 token += char
             if token.strip() == "RETURNS":
-                returns = True
-                token = ""
-        if returns:
-            type = token.strip()
-            if not(type in self.types):
-                self.err.invaSyn(lineNo, line, line.find(type)+len(type)//2, None, str(type)+" is not a valid type")
-        else:
-            self.err.invaSyn(lineNo, line, -1, None, "RETURNS expected")
+                self.err.invaSyn(lineNo, line, pos, None, "A procedure has no returning value")
+
+        byref = False
+        if parasStr.startswith("BYREF"):
+            byref = True
+            parasStr = parasStr[5:].strip()
+        elif parasStr.startswith("BYVAL"):
+            parasStr = parasStr[5:].strip()
 
         paras = {}
 
@@ -1084,14 +1084,14 @@ class interpreter:
             skip += 1
             pos += 1
             subLine = lines[pos]
-            if subLine.startswith("ENDFUNCTION"):
-                if subLine.rstrip() != "ENDFUNCTION":
-                    self.err.invaSyn(innitialPos + pos, subLine, -1, None, "Should be ENDFUNCTION")
+            if subLine.startswith("ENDPROCEDURE"):
+                if subLine.rstrip() != "ENDPROCEDURE":
+                    self.err.invaSyn(innitialPos + pos, subLine, -1, None, "Should be ENDPROCEDURE")
                 end = True
                 endPos = pos
                 break
         if not end:
-            self.err.invaSyn(lineNo, line, -1, None, "ENDFUNCTION expected")
+            self.err.invaSyn(lineNo, line, -1, None, "ENDPROCEDURE expected")
         
         for subLine, pos in zip(lines[startPos:endPos], range(endPos - startPos)):
             if subLine.startswith(" "):
@@ -1107,6 +1107,8 @@ class interpreter:
                    else:
                        self.err.indentErr(selfPos + pos+1, subLine, 0, None, "Unexpected indent")
                subLine = subLine[indentation:]
+               if subLine.startswith("RETURN") and not(self.isValidChar(subLine[6])):
+                   self.err.invaSyn(lineNo, line, pos, None, "A procedure has no returning value")
                linesToExe.append(subLine)
             else:
                 self.err.indentErr(selfPos + pos+1, subLine, 0, None, "Unexpected indent")
@@ -1126,13 +1128,19 @@ class interpreter:
             elif identifier in (self.keywords or (self.keywords).lower()):
                     self.err.invaSyn(lineNo, line, line.find(identifier, 8)+len(identifier)//2, None)
         self.identifiers.append(identifier)
-        self.functions[identifier] = function(identifier, type, lineNo+1, linesToExe, paras)
+        self.procedures[identifier] = procedure(identifier, type, lineNo+1, linesToExe, byref, paras)
         return skip
 
     def exeReturn(self, lineNo, line):
         expression = line[6:].strip()
         return[0, self.getValue(expression, lineNo, line)]
 
+    def exeCall(self, lineNo, line):
+        identifier = line[4:].strip()
+        proc = self.isFunction(identifier, lineNo, line)
+        if not proc[0]:
+            self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, "<"+str(identifier)+"> is not callable")
+        (self.procedures[proc[1]]).returnValue(proc[2], lineNo, line, proc[3])
 
 ##### Utility functions #####
 
@@ -1859,4 +1867,24 @@ class function:
         for name, type, arg in zip (self.parameters.keys(), self.parameters.values(), args):
             self.inter.identifiers.append(name)
             self.inter.variables[name] = variable(name, type, arg)
+        return self.inter.run(self.lines, self.initialpos, 1)
+
+class procedure(function):
+    def __init__(self, identifier, type, initialpos, lines, byref, parameters={}):
+        super().__init__(identifier, type, initialpos, lines, parameters)
+        self.byref = byref
+
+    def returnType(self):
+        return None
+    
+    def returnValue(self, args, lineNo, line, byref):
+        self.inter = funcInterpreter(lineNo, line, self.identifier)
+        if not byref:
+            for name, type, arg in zip (self.parameters.keys(), self.parameters.values(), args):
+                self.inter.identifiers.append(name)
+                self.inter.variables[name] = variable(name, type, arg)
+        else:
+            for name, type, arg in zip (self.parameters.keys(), self.parameters.values(), args):
+                self.inter.identifiers.append(name)
+                self.inter.variables[name] = arg
         return self.inter.run(self.lines, self.initialpos, 1)
