@@ -1,5 +1,6 @@
-from typing import Any
-
+import builtinFunction as bif
+from datetime import datetime, date
+import re
 
 def printRed(skk): print("\033[91m {}\033[00m" .format(skk))
 
@@ -54,11 +55,14 @@ class error:
             printRed ("\t" + " "*pos + "^" )
         printRed ("<"+detail+"> missing "+str(description)+" positional argument(s)")     
         quit()
+    def valErr(self, lineNo, line, pos, detail = None, description = None):
+        printRed("Value error: '"+str(detail)+"' does not match format '"+description+"' at line "+str(lineNo))
+        quit()
 
 class interpreter:
     def __init__(self):
 
-        #self.err = error()
+        self.err = error()
 
         self.identifiers = []
         self.variables = {}
@@ -66,6 +70,10 @@ class interpreter:
         self.arrays = {}
         self.functions = {}
         self.procedures = {}
+
+        for n, f in zip(bif.builtIns.keys(), bif.builtIns.values()):
+            self.identifiers.append(n)
+            self.functions[n] = f
 
         self.digits = "1234567890"
         self.operators = [
@@ -339,6 +347,16 @@ class interpreter:
         else:
             return [False, None, None, None]
     
+    def isDate(self, id, lineNo, line):
+        if re.match(r'^\d{2}/\d{2}/\d{4}$', id):
+            try:
+                return bool(datetime.strptime(id, "%d/%m/%Y"))
+            except ValueError:
+                self.err.valErr(lineNo, line, -1, id, "DD/MM/YYYY")
+        else:
+            return False
+                
+
     def boolConvert(self, input):
         if input == "TRUE":
             return True
@@ -1133,6 +1151,7 @@ class interpreter:
 
     def exeReturn(self, lineNo, line):
         expression = line[6:].strip()
+        # TODO type check
         return[0, self.getValue(expression, lineNo, line)]
 
     def exeCall(self, lineNo, line):
@@ -1263,7 +1282,8 @@ class interpreter:
                 pass
         if "&" in identifierWOLiteral:  # apart from string literal, there is a &
             return self.strComb(identifier, lineNo, line)
-        elif all(n in self.digits for n in identifier):  # it is a number
+        elif all(n in self.digits for n in identifier) or (identifier.startswith("-") and 
+                                                           all(n in self.digits for n in identifier[1:])):  # it is a number
             if "." in identifier:
                 return float(identifier)
             return int(identifier)
@@ -1296,6 +1316,10 @@ class interpreter:
                 self.err.typeErr(lineNo, line, int(line.find(identifier, 7)+1), identifier, "CHAR")
             else:
                 return identifier
+        
+        elif self.isDate(identifier, lineNo, line):
+            return identifier
+
         elif identifier in (self.keywords or (self.keywords).lower()):
             self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
@@ -1390,6 +1414,9 @@ class interpreter:
         elif identifier in ["TRUE", "FALSE"]:
             return "BOOLEAN"
         
+        elif self.isDate(identifier, lineNo, line):
+            return "DATE"
+
         ###identifiers###
 
         elif identifier in (self.keywords or (self.keywords).lower()):
@@ -1842,6 +1869,10 @@ class funcError(error):
             printRed("At line "+ str(self.initialNo)+", in <"+str(self.identifier)+">")
             printRed("\t"+str(self.initialLine))
         return method
+    
+    def message(self, mess):
+        printRed (mess)
+        quit()
 
 
 class funcInterpreter(interpreter):
@@ -1857,7 +1888,7 @@ class function:
         self.parameters = parameters
         self.lines = lines
         self.initialpos = initialpos
-        self.err = error()        
+        self.err = error()      
     
     def returnType(self):
         return self.type
