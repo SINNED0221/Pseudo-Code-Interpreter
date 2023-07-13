@@ -1,6 +1,7 @@
 import builtinFunction as bif
 from datetime import datetime, date
 import re
+import copy
 
 def printRed(skk): print("\033[91m {}\033[00m" .format(skk))
 
@@ -58,6 +59,9 @@ class error:
     def valErr(self, lineNo, line, pos, detail = None, description = None):
         printRed("Value error: '"+str(detail)+"' does not match format '"+description+"' at line "+str(lineNo))
         quit()
+    def fileNF(self, lineNo, line, pos, detail = None, description = None):
+        printRed("File not found error: No such file opened <"+detail+"> at line "+ str(lineNo))
+        quit()
 
 class interpreter:
     def __init__(self):
@@ -70,6 +74,10 @@ class interpreter:
         self.arrays = {}
         self.functions = {}
         self.procedures = {}
+        self.files = {}
+        self.pointers = {}
+        self.enumerateds = {}
+        self.records = {}
 
         for n, f in zip(bif.builtIns.keys(), bif.builtIns.values()):
             self.identifiers.append(n)
@@ -122,7 +130,7 @@ class interpreter:
             'ENDPROCEDURE',
             'ENDTYPE',
             'ENDWHILE',
-            'EOF',
+            #'EOF',
             #'FALSE',
             'FOR',
             'TO',
@@ -148,8 +156,8 @@ class interpreter:
             'PRIVATE',
             'PUBLIC',
             'PUTRECORD',
-            'RAND',
-            'RANDOM',
+            #'RAND',
+            #'RANDOM',
             'READ',
             'READFILE',
             'REAL',
@@ -197,6 +205,8 @@ class interpreter:
             selfPos += skip
 
     def executeLine(self, line, lineNo, lines, innitialPos, selfPos):
+        if line == "":
+            return 0
         lineWOL = self.removeLiteral(line, lineNo, line)
         if "//" in lineWOL:  # get rid of comments
             line = line[0 : lineWOL.find("//")]
@@ -241,6 +251,20 @@ class interpreter:
         elif identifier == "CALL":
             self.exeCall(lineNo, line)
             return 0
+        elif identifier == "OPENFILE":
+            self.exeOpenfile(lineNo, line)
+            return 0
+        elif identifier == "READFILE":
+            self.exeReadfile(lineNo, line)
+            return 0
+        elif identifier == "WRITEFILE":
+            self.exeWritefile(lineNo, line)
+            return 0
+        elif identifier == "CLOSEFILE":
+            self.exeClosefile(lineNo, line)
+            return 0
+        elif identifier == "TYPE":
+            return self.exeType(lineNo, line, lines, innitialPos, selfPos)
 
         elif identifier in self.identifiers:
             self.exeAssign(lineNo, line)
@@ -420,7 +444,7 @@ class interpreter:
         type = line[line.find(':')+1: len(line)]
         type = type.strip()
         ids = self.commaSplit(ids, lineNo, line)
-        if type in self.types:
+        if type in self.types:  
             for identifier in ids:
                 identifier = identifier.strip()
                 if identifier in self.identifiers:
@@ -558,6 +582,7 @@ class interpreter:
                 elif identifier in (self.keywords or (self.keywords).lower()):
                     self.err.invaSyn(lineNo, line, line.find(identifier, 8)+len(identifier)//2, None)
                 self.identifiers.append(identifier)
+                self.types.append(identifier)
                 self.constants[identifier] = variable(identifier, type, value)
             else:
                 self.err.invaSyn(lineNo, line, int(line.find(type)/2), "Invalid Data Type")
@@ -568,8 +593,13 @@ class interpreter:
         lefts = self.commaSplit(leftStr, lineNo, line)
         rights = self.commaSplit(rightStr, lineNo, line)
         for left, right in zip(lefts, rights):
+            
             leftType = self.getType(left, lineNo, line)
-            rightType = self.getType(left, lineNo, line)
+            rightType = self.getType(right, lineNo, line)
+            if rightType[0] == "POINTER":
+                if not leftType in self.pointers.keys() or self.pointers[leftType].type != rightType[1]:
+                    self.err.typeErr(lineNo, line, -1, left, rightType[1]+" pointer")
+                rightType = leftType
             right = self.getValue (right, lineNo, line)
             if left in (self.constants).keys():
                 self.err.invaSyn(lineNo, line, (line.find(left)+len(left))//2, None, "A constant is immutable")
@@ -1161,6 +1191,113 @@ class interpreter:
             self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, "<"+str(identifier)+"> is not callable")
         (self.procedures[proc[1]]).returnValue(proc[2], lineNo, line, proc[3])
 
+    def exeOpenfile(self, lineNo, line):
+        pos = 8
+        lineWOL = self.removeLiteral(line, lineNo, line)
+        while pos < len(line)-1:
+            pos += 1
+            char = line[pos]
+            if not self.isValidChar(char):
+                pos -= 1
+                break
+        identifier = line[8:pos+1].strip()
+        identifier = self.getString(identifier, lineNo, line)
+        isFor = False
+        token = ""
+        while pos < len(line)-1:
+            pos+=1
+            char = line[pos]
+            token += char
+            if token.strip() == "FOR":
+                isFor = True
+                token = ""
+        if not isFor:
+            self.err.invaSyn(lineNo, line, -1, None, "FOR <file mode> expected")
+        fileMode = token.strip()
+        if not fileMode in ["READ", "WRITE", "APPEND", "RANDOM"]:
+            self.err.invaSyn(lineNo, line, line.find(fileMode)+len(fileMode)//2, None, "Invalid file mode")
+        elif fileMode == "READ":
+            self.files[identifier] = open(identifier, "r")
+        elif fileMode == "WRITE":
+            self.files[identifier] = open(identifier, "w")
+        elif fileMode == "APPEND":
+            self.files[identifier] = open(identifier, "a")
+        elif fileMode == "RANDOM":
+            pass
+
+    def exeReadfile(self, lineNo, line):
+        idAndVar = self.commaSplit(line[8:], lineNo, line)
+        if len(idAndVar)!=2:
+            self.err.invaSyn(lineNo, line, line.find(",", line.find(",")+1), None, None)
+        identifier = self.getString(idAndVar[0], lineNo, line)
+        variable = idAndVar[1]
+        if not variable in self.variables.keys():
+            self.err.invaSyn(lineNo, line, line.find(variable)+len(variable)//2, None, "<"+variable+"> is not a variable")
+        if self.variables[variable].type != "STRING":
+            self.err.typeErr(lineNo, line, line.find(variable)+len(variable)//2, variable, "STRING")
+        if not identifier in self.files.keys():
+            self.err.fileNF(lineNo, line, -1, identifier, None)
+        try:
+            t = self.files[identifier].readline()
+            self.variables[variable].value = t
+        except IOError:
+            self.err.invaSyn(lineNo, line, -1, None, "Unsupported operation for the file mode")
+    def exeWritefile(self, lineNo, line):
+        idAndVar = self.commaSplit(line[9:], lineNo, line)
+        if len(idAndVar)!=2:
+            self.err.invaSyn(lineNo, line, line.find(",", line.find(",")+1), None, None)
+        identifier = self.getString(idAndVar[0], lineNo, line)
+        data = idAndVar[1]
+        if self.getType(data, lineNo, line) != "STRING":
+            self.err.typeErr(lineNo, line, line.find(data)+len(data)//2, variable, "STRING")
+        data = self.getString(data, lineNo, line)
+        if not identifier in self.files.keys():
+            self.err.fileNF(lineNo, line, -1, identifier, None)
+        try:
+            t = self.files[identifier].write(data+"\n")
+        except IOError:
+            self.err.invaSyn(lineNo, line, -1, None, "Unsupported operation for the file mode")
+    def exeClosefile(self, lineNo, line):
+        identifier = self.getString(line[9:].strip(), lineNo, line)
+        if not identifier in self.files.keys():
+            self.err.fileNF(lineNo, line, -1, identifier, None)
+        self.files[identifier].close()
+        del self.files[identifier]
+    
+    def exeType(self, lineNo, line, lines, innitialPos, selfPos):
+        lineWOL = self.removeLiteral(line, lineNo, line)
+        if "=" in lineWOL:
+            ids = line[4: line.find('=')]
+            values = line[line.find('=')+1: len(line)].strip()
+            ids = self.commaSplit(ids, lineNo, line)
+            if values.startswith("^"):
+                type = values[1:]
+                if not type in self.types:
+                    self.err.invaSyn(lineNo, line, line.find(type)+len(type)//2, type, "Invalid data type")
+                for identifier in ids:
+                    if identifier in self.identifiers:
+                        self.identifiers.pop((self.identifiers.index(identifier)))
+                    if identifier in self.variables.keys():
+                        del (self.variables[identifier])
+                    elif identifier in self.arrays.keys():
+                        del (self.arrays[identifier])
+                    elif identifier in self.functions.keys():
+                        del (self.functions[identifier])
+                    elif identifier in self.procedures.keys():
+                        del (self.procedures[identifier])
+                    elif identifier in self.constants.keys():
+                        del (self.constants[identifier])
+                    elif identifier in (self.keywords or (self.keywords).lower()):
+                        self.err.invaSyn(lineNo, line, line.find(identifier, 8)+len(identifier)//2, None) 
+                    self.identifiers.append(identifier)
+                    self.types.append(identifier)
+                    self.pointers[identifier]=(pointer(identifier, type))
+                return 0
+            elif values.startswith("(") or values .endswith(")"):
+                if not (values .endswith(")") or values.startswith("(")):
+                    self.err.invaSyn(lineNo, line, -1, None, "Unmatched colon")
+
+
 ##### Utility functions #####
 
     def removeLiteral(self, token, lineNo, line):
@@ -1320,6 +1457,19 @@ class interpreter:
         elif self.isDate(identifier, lineNo, line):
             return identifier
 
+        elif identifier.startswith("^"):
+            identifier = identifier[1:]
+            type = self.getType(identifier, lineNo, line)
+            if not identifier in self.variables.keys():
+                self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, identifier + " is not a variable")
+            return self.variables[identifier]
+        elif identifier.endswith("^"):
+            identifier = identifier[0:-1]
+            type = self.getType(identifier, lineNo, line)
+            if not type in self.pointers.keys():
+                 self.err.typeErr(lineNo, line, -1, identifier, "pointer")
+            return str(self.variables[identifier].value.value)
+
         elif identifier in (self.keywords or (self.keywords).lower()):
             self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
@@ -1329,6 +1479,18 @@ class interpreter:
         elif self.isArray(identifier, lineNo, line)[0] == True:
             arr = self.isArray(identifier, lineNo, line)
             return (self.arrays[arr[1]]).returnValue(arr[2], lineNo, line)
+        elif self.isFunction(identifier, lineNo, line)[1] == "EOF":
+            func = self.isFunction(identifier, lineNo, line)
+            identifier = self.getString(func[2][0], lineNo, line)
+            if not identifier in self.files.keys():
+                self.err.fileNF(lineNo, line, -1, identifier, None)
+            pos = self.files[identifier].tell()
+            if self.files[identifier].readline() == "":
+                result = "TRUE"
+            else:
+                result = "FALSE"
+            self.files[identifier].seek(pos)
+            return result
         elif self.isFunction(identifier, lineNo, line)[0] == "FUNC":
             func = self.isFunction(identifier, lineNo, line)
             return (self.functions[func[1]]).returnValue(func[2], lineNo, line)
@@ -1416,6 +1578,19 @@ class interpreter:
         
         elif self.isDate(identifier, lineNo, line):
             return "DATE"
+
+        elif identifier.startswith("^"):
+            identifier = identifier[1:]
+            type = self.getType(identifier, lineNo, line)
+            if not identifier in self.variables.keys():
+                self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, identifier + " is not a variable")
+            return ["POINTER", type]
+        elif identifier.endswith("^"):
+            identifier = identifier[0:-1]
+            type = self.getType(identifier, lineNo, line)
+            if not type in self.pointers.keys():
+                 self.err.typeErr(lineNo, line, -1, identifier, "pointer")
+            return self.getType(self.variables[identifier].value.identifier, lineNo, line)
 
         ###identifiers###
 
@@ -1919,3 +2094,13 @@ class procedure(function):
                 self.inter.identifiers.append(name)
                 self.inter.variables[name] = arg
         return self.inter.run(self.lines, self.initialpos, 1)
+
+class pointer(variable):
+    def __init__(self, identifier, type, value=None):
+        super().__init__(identifier, type, value)
+
+    def __repr__(self):
+        return self.identifier
+    
+    def returnType(self):
+        return self.identifier
