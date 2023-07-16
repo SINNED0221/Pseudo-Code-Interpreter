@@ -5,6 +5,9 @@ import copy
 
 def printRed(skk): print("\033[91m {}\033[00m" .format(skk))
 
+errorStack = []
+maxRecur = 69
+
 class error:
     
     def invaSyn(self, lineNo, line, pos, detail = None, description = None):
@@ -19,7 +22,11 @@ class error:
         printRed ("Name error: <" + str(detail) + "> referenced before assigned at line " + str(lineNo))
         printRed ("\t" + str(line))
         if description:
-            printRed (description + " expected")
+            printRed (description)
+        quit()
+    def nameConErr(self, lineNo, line, pos, detail = None, description = None):
+        printRed ("Name error: <" + str(detail) + "> conflicted with "+description+" at line " + str(lineNo))
+        printRed ("\t" + str(line))
         quit()
     def typeErr(self, lineNo, line, pos, detail = None, description = None):
         printRed ("Type error: <" + str(detail) + "> is unexpected type at line " + str(lineNo))
@@ -62,6 +69,9 @@ class error:
     def fileNF(self, lineNo, line, pos, detail = None, description = None):
         printRed("File not found error: No such file opened <"+detail+"> at line "+ str(lineNo))
         quit()
+    def attrErr(self, lineNo, line, pos, detail = None, description = None):
+        printRed("Attribute error: <"+detail+"> has no attribute <"+description+"> at line "+ str(lineNo))
+        quit()
 
 class interpreter:
     def __init__(self):
@@ -77,7 +87,9 @@ class interpreter:
         self.files = {}
         self.pointers = {}
         self.enumerateds = {}
+        self.enuIds = []
         self.records = {}
+        self.classes = {}
 
         for n, f in zip(bif.builtIns.keys(), bif.builtIns.values()):
             self.identifiers.append(n)
@@ -265,6 +277,8 @@ class interpreter:
             return 0
         elif identifier == "TYPE":
             return self.exeType(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "CLASS":
+            return self.exeClass(lineNo, line, lines, innitialPos, selfPos)
 
         elif identifier in self.identifiers:
             self.exeAssign(lineNo, line)
@@ -390,6 +404,86 @@ class interpreter:
             return "TRUE"
         elif input == False:
             return "FALSE"
+    
+    def initId(self, identifier, lineNo, line):
+        if identifier[0].isalpha():
+            for c in identifier[1:]:
+                if not self.isValidChar(c):
+                    self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, "Invalid identifier")
+        else:
+            self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, "Invalid identifier")
+        if identifier in self.identifiers:
+            if identifier in self.enuIds:
+                for e in self.enumerateds:
+                    for v in e.values:
+                        if identifier == v:
+                            self.err.nameConErr(lineNo, line, -1, identifier, v + " in "+e.identifier)
+            self.identifiers.pop((self.identifiers.index(identifier)))
+            if identifier in self.variables.keys():
+                del (self.variables[identifier])
+            elif identifier in self.arrays.keys():
+                del (self.arrays[identifier])
+            elif identifier in self.functions.keys():
+                del (self.functions[identifier])
+            elif identifier in self.procedures.keys():
+                del (self.procedures[identifier])
+            elif identifier in self.constants.keys():
+                del (self.constants[identifier])
+            elif identifier in self.enumerateds.keys():
+                self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
+            elif identifier in self.pointers.keys():
+                self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
+            elif identifier in self.records.keys():
+                self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
+        elif identifier in (self.keywords or (self.keywords).lower()):
+            self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
+    
+    def keepId(self, identifier):
+        self.tempvariables = {}
+        self.tempconstants = {}
+        self.temparrays = {}
+        self.tempfunctions = {}
+        self.tempprocedures = {}
+        if identifier in self.identifiers:
+            self.identifiers.pop((self.identifiers.index(identifier)))
+            if identifier in self.variables.keys():
+                self.tempvariables[identifier] = self.variables.pop(identifier)
+            elif identifier in self.arrays.keys():
+                self.temparrays[identifier] = self.arrays.pop(identifier)
+            elif identifier in self.functions.keys():
+                self.tempfunctions[identifier] = self.functions.pop(identifier)
+            elif identifier in self.procedures.keys():
+                self.tempprocedures[identifier] = self.procedures.pop(identifier)
+            elif identifier in self.constants.keys():
+                self.tempconstants[identifier] = self.constants.pop(identifier)
+
+    def resumeId(self):
+        for id, value in zip(self.tempvariables.keys(), self.tempvariables.values()):
+            self.variables[id] = value
+        for id, value in zip(self.temparrays.keys(), self.temparrays.values()):
+            del self.variables[id]
+            self.arrays[id] = value
+        for id, value in zip(self.tempfunctions.keys(), self.tempfunctions.values()):
+            del self.variables[id]
+            self.functions[id] = value
+        for id, value in zip(self.tempprocedures.keys(), self.tempprocedures.values()):
+            del self.variables[id]
+            self.pointers[id] = value
+        for id, value in zip(self.tempconstants.keys(), self.tempconstants.values()):
+            del self.variables[id]
+            self.constants[id] = value
+
+    def isObject(self, identifier, lineNo, line):
+        if "." in identifier:
+            obj = identifier[0:identifier.find(".")].strip()
+            attr = identifier[identifier.find(".")+1:].strip()
+            if self.getType(obj, lineNo, line) in self.records.keys():
+                if not attr in self.variables[obj].value.inter.variables.keys():
+                    self.err.attrErr(lineNo, line, -1, obj, attr)
+                return ["RECORD", obj, attr]
+        
+        else:
+            return [False, None, None]
 
 ##### Commands #####
 
@@ -419,7 +513,11 @@ class interpreter:
                                                      all(n in self.digits+"." for n in value[1:])):
             value = float(value)
             valueType = "REAL"
-        
+        elif value in self.enuIds:
+            for e in self.enumerateds.values:
+                for v in e.values:
+                    if value == v:
+                        valueType = e.identifier
         else:
             value = '"'+value+'"'
             valueType = "STRING"
@@ -432,37 +530,31 @@ class interpreter:
             self.variables[identifier].value = value
         elif (self.isArray(identifier, lineNo, line))[0] == True:
             self.arrays[self.isArray(identifier, lineNo, line)[1]].injectValue(self.isArray(identifier, lineNo, line)[2], value, lineNo, line)
+        elif self.isObject(identifier, lineNo, line)[0] == "RECORD":
+                record = self.isObject(identifier, lineNo, line)
+                rec = record[1]
+                atrr = record[2]
+                self.variables[rec].value.inter.variables[atrr].value = value
         else:
             self.err.nameErr(lineNo, line, (line.find(identifier)+len(identifier))//2, identifier)
 
-    def exeDeclare(self, lineNo, line):
-        if line[0:line.find(" ")] != "DECLARE":  # If the DECLARE is typed wrong, call invalSyn
-            self.err.invaSyn(lineNo, line, 8, None)
-        elif line.find(":") == -1:
+    def exeDeclare(self, lineNo, line, ignore = 8):
+        #if line[0:line.find(" ")] != "DECLARE":  # If the DECLARE is typed wrong, call invalSyn
+        #    self.err.invaSyn(lineNo, line, 8, None)
+        if line.find(":") == -1:
             self.err.invaSyn(lineNo, line, -1, "Missing colon")
-        ids = line[8: line.find(':')]
+        ids = line[ignore: line.find(':')]
         type = line[line.find(':')+1: len(line)]
         type = type.strip()
         ids = self.commaSplit(ids, lineNo, line)
         if type in self.types:  
             for identifier in ids:
                 identifier = identifier.strip()
-                if identifier in self.identifiers:
-                    self.identifiers.pop((self.identifiers.index(identifier)))
-                    if identifier in self.variables.keys:
-                        del (self.variables[identifier])
-                    elif identifier in self.arrays.keys():
-                        del (self.arrays[identifier])
-                    elif identifier in self.functions.keys():
-                        del (self.functions[identifier])
-                    elif identifier in self.procedures.keys():
-                        del (self.procedures[identifier])
-                    elif identifier in self.constants.keys():
-                        del (self.constants[identifier])
-                elif identifier in (self.keywords or (self.keywords).lower()):
-                    self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
+                self.initId(identifier, lineNo, line)
                 self.identifiers.append(identifier)
                 self.variables[identifier] = variable(identifier, type)
+                if type in self.records.keys():
+                    self.variables[identifier].value = copy.deepcopy(self.records[type])
         elif type.startswith("ARRAY"):
             if (type[0:type.find("[")]).strip() != "ARRAY":  # If the ARRAY is typed wrong, call invalSyn
                 self.err.invaSyn(lineNo, line, 3, None)
@@ -536,31 +628,18 @@ class interpreter:
 
             for identifier in ids:
                 identifier = identifier.strip()
-                if identifier in self.identifiers:
-                    self.identifiers.pop((self.identifiers.index(identifier)))
-                if identifier in self.variables.keys:
-                    del (self.variables[identifier])
-                elif identifier in self.arrays.keys():
-                    del (self.arrays[identifier])
-                elif identifier in self.functions.keys():
-                    del (self.functions[identifier])
-                elif identifier in self.procedures.keys():
-                    del (self.procedures[identifier])
-                elif identifier in self.constants.keys():
-                    del (self.constants[identifier])
-                elif identifier in (self.keywords or (self.keywords).lower()):
-                    self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
+                self.initId(identifier, lineNo, line)
                 self.identifiers.append(identifier)
                 self.arrays[identifier] = array(identifier, typeStr, bounds)
         else:
-            self.err.invaSyn(lineNo, line, int(line.find(type)/2), "Invalid Data Type")
+            self.err.invaSyn(lineNo, line, int(line.find(type)/2), None, "Invalid Data Type")
 
-    def exeConstant(self, lineNo, line):
-        if line[0:line.find(" ")] != "CONSTANT":  # If the CONSTANT is typed wrong, call invalSyn
-            self.err.invaSyn(lineNo, line, 8, None)
-        elif line.find("=") == -1:
+    def exeConstant(self, lineNo, line, ignore =8):
+        #if line[0:line.find(" ")] != "CONSTANT":  # If the CONSTANT is typed wrong, call invalSyn
+        #    self.err.invaSyn(lineNo, line, 8, None)
+        if line.find("=") == -1:
             self.err.invaSyn(lineNo, line, -1, "Missing equal sign")
-        ids = line[8: line.find('=')]
+        ids = line[ignore: line.find('=')]
         values = line[line.find('=')+1: len(line)]
         values = self.commaSplit(values, lineNo, line)
         ids = self.commaSplit(ids, lineNo, line)
@@ -568,19 +647,7 @@ class interpreter:
         for identifier, value in zip(ids, values):
             type = self.getType(value, lineNo, line)
             if identifier in self.identifiers:
-                self.identifiers.pop((self.identifiers.index(identifier)))
-                if identifier in self.variables.keys:
-                    del (self.variables[identifier])
-                elif identifier in self.arrays.keys():
-                    del (self.arrays[identifier])
-                elif identifier in self.functions.keys():
-                    del (self.functions[identifier])
-                elif identifier in self.procedures.keys():
-                    del (self.procedures[identifier])
-                elif identifier in self.constants.keys():
-                    del (self.constants[identifier])
-                elif identifier in (self.keywords or (self.keywords).lower()):
-                    self.err.invaSyn(lineNo, line, line.find(identifier, 8)+len(identifier)//2, None)
+                self.initId(identifier, lineNo, line)
                 self.identifiers.append(identifier)
                 self.types.append(identifier)
                 self.constants[identifier] = variable(identifier, type, value)
@@ -609,6 +676,11 @@ class interpreter:
                 self.variables[left].value = right
             elif (self.isArray(left, lineNo, line))[0] == True:
                 self.arrays[self.isArray(left, lineNo, line)[1]].injectValue(self.isArray(left, lineNo, line)[2], right, lineNo, line)
+            elif self.isObject(left, lineNo, line)[0] == "RECORD":
+                record = self.isObject(left, lineNo, line)
+                rec = record[1]
+                atrr = record[2]
+                self.variables[rec].value.inter.variables[atrr].value = right
             else:
                 self.err.nameErr(lineNo, line, (line.find(left)+len(left))//2, left)
 
@@ -960,8 +1032,8 @@ class interpreter:
 
         return skip
 
-    def exeFunction(self, lineNo, line, lines, innitialPos, selfPos):
-        pos = 8
+    def exeFunction(self, lineNo, line, lines, innitialPos, selfPos, ignore = 8):
+        pos = ignore
         lineWOL = self.removeLiteral(line, lineNo, line)
         while pos < len(line)-1:
             pos += 1
@@ -1054,26 +1126,13 @@ class interpreter:
             else:
                 self.err.indentErr(selfPos + pos+1, subLine, 0, None, "Unexpected indent")
 
-        if identifier in self.identifiers:
-            self.identifiers.pop((self.identifiers.index(identifier)))
-            if identifier in self.variables.keys:
-                del (self.variables[identifier])
-            elif identifier in self.arrays.keys():
-                del (self.arrays[identifier])
-            elif identifier in self.functions.keys():
-                del (self.functions[identifier])
-            elif identifier in self.procedures.keys():
-                del (self.procedures[identifier])
-            elif identifier in self.constants.keys():
-                del (self.constants[identifier])
-            elif identifier in (self.keywords or (self.keywords).lower()):
-                    self.err.invaSyn(lineNo, line, line.find(identifier, 8)+len(identifier)//2, None)
+        self.initId(identifier, lineNo, line)
         self.identifiers.append(identifier)
-        self.functions[identifier] = function(identifier, type, lineNo+1, linesToExe, paras)
+        self.functions[identifier] = function(identifier, type, lineNo+1, linesToExe, vars(self), paras)
         return skip
     
-    def exeProcedure(self, lineNo, line, lines, innitialPos, selfPos):
-        pos = 9
+    def exeProcedure(self, lineNo, line, lines, innitialPos, selfPos, ignore =9):
+        pos = ignore
         lineWOL = self.removeLiteral(line, lineNo, line)
         while pos < len(line)-1:
             pos += 1
@@ -1161,20 +1220,7 @@ class interpreter:
             else:
                 self.err.indentErr(selfPos + pos+1, subLine, 0, None, "Unexpected indent")
 
-        if identifier in self.identifiers:
-            self.identifiers.pop((self.identifiers.index(identifier)))
-            if identifier in self.variables.keys:
-                del (self.variables[identifier])
-            elif identifier in self.arrays.keys():
-                del (self.arrays[identifier])
-            elif identifier in self.functions.keys():
-                del (self.functions[identifier])
-            elif identifier in self.procedures.keys():
-                del (self.procedures[identifier])
-            elif identifier in self.constants.keys():
-                del (self.constants[identifier])
-            elif identifier in (self.keywords or (self.keywords).lower()):
-                    self.err.invaSyn(lineNo, line, line.find(identifier, 8)+len(identifier)//2, None)
+        self.initId(identifier, lineNo, line)
         self.identifiers.append(identifier)
         self.procedures[identifier] = procedure(identifier, type, lineNo+1, linesToExe, byref, paras)
         return skip
@@ -1275,20 +1321,7 @@ class interpreter:
                 if not type in self.types:
                     self.err.invaSyn(lineNo, line, line.find(type)+len(type)//2, type, "Invalid data type")
                 for identifier in ids:
-                    if identifier in self.identifiers:
-                        self.identifiers.pop((self.identifiers.index(identifier)))
-                    if identifier in self.variables.keys():
-                        del (self.variables[identifier])
-                    elif identifier in self.arrays.keys():
-                        del (self.arrays[identifier])
-                    elif identifier in self.functions.keys():
-                        del (self.functions[identifier])
-                    elif identifier in self.procedures.keys():
-                        del (self.procedures[identifier])
-                    elif identifier in self.constants.keys():
-                        del (self.constants[identifier])
-                    elif identifier in (self.keywords or (self.keywords).lower()):
-                        self.err.invaSyn(lineNo, line, line.find(identifier, 8)+len(identifier)//2, None) 
+                    self.initId(identifier, lineNo, line)
                     self.identifiers.append(identifier)
                     self.types.append(identifier)
                     self.pointers[identifier]=(pointer(identifier, type))
@@ -1296,6 +1329,170 @@ class interpreter:
             elif values.startswith("(") or values .endswith(")"):
                 if not (values .endswith(")") or values.startswith("(")):
                     self.err.invaSyn(lineNo, line, -1, None, "Unmatched colon")
+                values = values[1:-1]
+                values = self.commaSplit(values, lineNo, line)
+                for identifier in ids:
+                    self.initId(identifier, lineNo, line)
+                    self.identifiers.append(identifier)
+                    self.enumerateds[identifier] = (enumerated(identifier))
+                    for v in values:
+                        if v==identifier:
+                            self.err.nameConErr(lineNo, line, -1, v, "Type name")
+                        self.initId(v, lineNo, line)
+                        self.identifiers.append(v)
+                        self.enuIds.append(v)
+                        self.enumerateds[identifier].values.append(v)
+                    self.types.append(identifier)
+                    self.identifiers.append(identifier)
+                return 0
+        else:
+            identifier = line[4:].strip()
+            self.initId(identifier, lineNo, line)
+
+            linesToExe =[]
+            endPos = 0
+            pos = selfPos-1
+            startPos = selfPos
+            indentation = 0
+            skip = 0
+            end = False
+            while pos < len(lines)-1:
+                skip += 1
+                pos += 1
+                subLine = lines[pos]
+                if subLine.startswith("ENDTYPE"):
+                    if subLine.rstrip() != "ENDTYPE":
+                        self.err.invaSyn(innitialPos + pos, subLine, -1, None, "Should be ENDTYPE")
+                    end = True
+                    endPos = pos
+                    break
+            if not end:
+                self.err.invaSyn(lineNo, line, -1, None, "ENDTYPE expected")
+            for subLine, pos in zip(lines[startPos:endPos], range(endPos - startPos)):
+                if subLine.startswith(" "):
+                   if indentation == 0:
+                       for c in subLine:
+                           if c == " ":
+                               indentation += 1
+                           else:
+                               break
+                   else:
+                       if subLine.startswith(" "*indentation):
+                           pass
+                       else:
+                           self.err.indentErr(selfPos + pos+1, subLine, 0, None, "Unexpected indent")
+                   subLine = subLine[indentation:]
+                   if not subLine.startswith("DECLARE"):
+                       self.err.invaSyn(lineNo, line, pos, None, "A record type can only declare variables")
+                   linesToExe.append(subLine)
+                else:
+                    self.err.indentErr(selfPos + pos+1, subLine, 0, None, "Unexpected indent")
+            
+            self.types.append(identifier)
+            self.identifiers.append(identifier)
+            self.records[identifier] = record(identifier, None, innitialPos, linesToExe, {}, lineNo, line)
+            return skip
+
+    def exeFunction(self, lineNo, line, lines, innitialPos, selfPos, ignore = 5):
+        pos = ignore
+        lineWOL = self.removeLiteral(line, lineNo, line)
+        while pos < len(line)-1:
+            pos += 1
+            char = line[pos]
+            if not self.isValidChar(char):
+                pos -= 1
+                break
+        identifier = line[8:pos+1].strip()
+        parasStr = ""
+        token = ""
+        inherits = False
+        while pos < len(line)-1:
+            pos += 1
+            char = lineWOL[pos]
+            if char == "(":
+                while pos < len(line)-1:
+                    pos+=1
+                    char = line[pos]
+                    if char == ")":
+                        break
+                    else:
+                        parasStr += char
+            else:
+                token += char
+            if token.strip() == "INHERITS":
+                inherits = True
+                token = ""
+        if inherits:
+            parentStr = token.strip()
+            if not(type in self.classes.keys()):
+                self.err.invaSyn(lineNo, line, line.find(type)+len(type)//2, None, str(type)+" is not a valid class")
+            else:
+                parent = self.classes[parentStr]
+        else:
+            self.err.invaSyn(lineNo, line, -1, None, "RETURNS expected")
+
+        if parasStr.startswith("BYREF"):
+                self.err.invaSyn(lineNo, line, line.find("BYREF")+len("BYREF")//2, None, 
+                                 "Parameters should not be passed by reference to a function")
+        elif parasStr.startswith("BYVAL"):
+            parasStr = parasStr[5:].strip()
+
+        paras = {}
+
+        if parasStr:
+            paraList = self.commaSplit(parasStr, lineNo, line)
+            paras = {}
+            for para in paraList:
+                if not ":" in para:
+                    self.err.invaSyn(lineNo, line, line.find(para)+len(para)//2, None, "Missing colon")
+                paraName = para[0:para.find(":")].strip()
+                paraType = para[para.find(":")+1:].strip()
+                if not paraType in self.types:
+                    self.err.invaSyn(lineNo, line, line.find(paraType)+len(paraType)//2, None, "Invalid type")
+                paras[paraName] = paraType
+
+        linesToExe =[]
+        endPos = 0
+        pos = selfPos-1
+        startPos = selfPos
+        indentation = 0
+        skip = 0
+        end = False
+        while pos < len(lines)-1:
+            skip += 1
+            pos += 1
+            subLine = lines[pos]
+            if subLine.startswith("ENDFUNCTION"):
+                if subLine.rstrip() != "ENDFUNCTION":
+                    self.err.invaSyn(innitialPos + pos, subLine, -1, None, "Should be ENDFUNCTION")
+                end = True
+                endPos = pos
+                break
+        if not end:
+            self.err.invaSyn(lineNo, line, -1, None, "ENDFUNCTION expected")
+        
+        for subLine, pos in zip(lines[startPos:endPos], range(endPos - startPos)):
+            if subLine.startswith(" "):
+               if indentation == 0:
+                   for c in subLine:
+                       if c == " ":
+                           indentation += 1
+                       else:
+                           break
+               else:
+                   if subLine.startswith(" "*indentation):
+                       pass
+                   else:
+                       self.err.indentErr(selfPos + pos+1, subLine, 0, None, "Unexpected indent")
+               subLine = subLine[indentation:]
+               linesToExe.append(subLine)
+            else:
+                self.err.indentErr(selfPos + pos+1, subLine, 0, None, "Unexpected indent")
+
+        self.initId(identifier, lineNo, line)
+        self.identifiers.append(identifier)
+        self.functions[identifier] = function(identifier, type, lineNo+1, linesToExe, vars(self), paras)
+        return skip
 
 
 ##### Utility functions #####
@@ -1385,6 +1582,13 @@ class interpreter:
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
         if not identifier:
             return identifier
+        
+        elif identifier in self.enuIds:
+            for e in self.enumerateds.values():
+                for v in e.values:
+                    if identifier == v:
+                        return v
+
         if any(op in identifierWOLiteral for op in self.logicOperators):
             valid = False
             for op in self.logicOperators:
@@ -1456,20 +1660,28 @@ class interpreter:
         
         elif self.isDate(identifier, lineNo, line):
             return identifier
-
+        
         elif identifier.startswith("^"):
             identifier = identifier[1:]
             type = self.getType(identifier, lineNo, line)
             if not identifier in self.variables.keys():
                 self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, identifier + " is not a variable")
-            return self.variables[identifier]
+            return copy.deepcopy(self.variables[identifier])
         elif identifier.endswith("^"):
             identifier = identifier[0:-1]
             type = self.getType(identifier, lineNo, line)
             if not type in self.pointers.keys():
                  self.err.typeErr(lineNo, line, -1, identifier, "pointer")
             return str(self.variables[identifier].value.value)
+        
+        elif self.isObject(identifier, lineNo, line)[0] == "RECORD":
+            record = self.isObject(identifier, lineNo, line)
+            rec = record[1]
+            attr = record[2]
+            return self.variables[rec].value.inter.variables[attr].value
 
+        elif self.getType(identifier, lineNo, line) in self.records.keys():
+            self.err.invaSyn(lineNo, line, line.find(identifier), None, "A record type cannot be directly referred")
         elif identifier in (self.keywords or (self.keywords).lower()):
             self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
@@ -1535,12 +1747,18 @@ class interpreter:
             return identifier
 
     def getType(self, identifier, lineNo, line):
-        
+        identifier = str(identifier)
         identifier = identifier.strip()
 
         ###Literals###
 
-        if all(n in self.digits+"." for n in identifier):  # it is a number
+        if identifier in self.enuIds:
+            for e in self.enumerateds.values():
+                for v in e.values:
+                    if identifier == v:
+                        return e.identifier
+
+        elif all(n in self.digits+"." for n in identifier):  # it is a number
             if "." in identifier:
                 return "REAL"
             else:
@@ -1592,6 +1810,12 @@ class interpreter:
                  self.err.typeErr(lineNo, line, -1, identifier, "pointer")
             return self.getType(self.variables[identifier].value.identifier, lineNo, line)
 
+        elif self.isObject(identifier, lineNo, line)[0] == "RECORD":
+            record = self.isObject(identifier, lineNo, line)
+            rec = record[1]
+            attr = record[2]
+            return self.variables[rec].value.inter.variables[attr].type
+
         ###identifiers###
 
         elif identifier in (self.keywords or (self.keywords).lower()):
@@ -1605,10 +1829,11 @@ class interpreter:
             return (self.variables[identifier]).returnType()
         elif identifier in (self.constants).keys():
             return (self.constants[identifier]).returnType()
-        elif identifier in (self.functions).keys():
-            return (self.variables[identifier]).returnType()
-        elif identifier in (self.procedures).keys():
-            self.err.invaSyn(lineNo, line, int(line.find(identifier)/2), "A procedure has no return value")
+        elif self.isFunction(identifier, lineNo, line)[0] == "FUNC":
+            func = self.isFunction(identifier, lineNo, line)
+            return (self.functions[func[1]]).returnType()
+        elif self.isFunction(identifier, lineNo, line)[0] == "PROC":
+            self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, "A procedure has no return value")
         elif any(not self.isValidChar(c) for c in identifier):
             return self.getType(self.getValue(identifier, lineNo, line), lineNo, line)
         else:
@@ -2028,6 +2253,8 @@ class array:
             else:
                 element = element[index-bound[0]]
 
+
+
 class funcError(error):
 
     def __init__(self, initialNo, initialLine, identifier):
@@ -2035,14 +2262,24 @@ class funcError(error):
         self.initialNo = initialNo
         self.initialLine = initialLine
         self.identifier = identifier
+        errorStack.append([initialNo, initialLine, identifier])
+        if len(errorStack) > maxRecur:
+            printRed("At line "+ str(initialNo)+", in <"+str(identifier)+">")
+            printRed("\t"+str(initialLine))
+            printRed("Maximum recursion depth of "+ str(maxRecur) +" has been reached")
+            quit()
 
     def __getattribute__(self, attr):
         method = object.__getattribute__(self, attr)
         if not method:
-            raise Exception("Method %s not implemented" % attr)
+            raise Exception
         if callable(method):
-            printRed("At line "+ str(self.initialNo)+", in <"+str(self.identifier)+">")
-            printRed("\t"+str(self.initialLine))
+            for e in errorStack:
+                initialNo = e[0]
+                initialLine = e[1]
+                identifier = e[2]
+                printRed("At line "+ str(initialNo)+", in <"+str(identifier)+">")
+                printRed("\t"+str(initialLine))
         return method
     
     def message(self, mess):
@@ -2057,43 +2294,241 @@ class funcInterpreter(interpreter):
 
 
 class function:
-    def __init__(self, identifier, type, initialpos, lines, parameters = {} ):
+    def __init__(self, identifier, type, initialpos, lines, attributes, parameters = {} ):
         self.identifier = identifier
         self.type = type
         self.parameters = parameters
         self.lines = lines
         self.initialpos = initialpos
-        self.err = error()      
+        self.attributes = attributes 
     
     def returnType(self):
         return self.type
     
     def returnValue(self, args, lineNo, line):
         self.inter = funcInterpreter(lineNo, line, self.identifier)
+        for attribute, value in self.attributes.items():
+            setattr(self.inter, attribute, value)
         for name, type, arg in zip (self.parameters.keys(), self.parameters.values(), args):
+            self.inter.keepId(name)
             self.inter.identifiers.append(name)
             self.inter.variables[name] = variable(name, type, arg)
-        return self.inter.run(self.lines, self.initialpos, 1)
+        result =  self.inter.run(self.lines, self.initialpos, 1)
+        self.inter.resumeId()
+        errorStack.pop()
+        return result
 
 class procedure(function):
-    def __init__(self, identifier, type, initialpos, lines, byref, parameters={}):
+    def __init__(self, identifier, type, initialpos, lines, byref, attributes, parameters={}):
         super().__init__(identifier, type, initialpos, lines, parameters)
         self.byref = byref
+        self.attributes = attributes 
 
     def returnType(self):
         return None
     
     def returnValue(self, args, lineNo, line, byref):
         self.inter = funcInterpreter(lineNo, line, self.identifier)
+        for attribute, value in self.attributes.items():
+            setattr(self.inter, attribute, value)
         if not byref:
             for name, type, arg in zip (self.parameters.keys(), self.parameters.values(), args):
+                self.inter.keepId(name)
                 self.inter.identifiers.append(name)
                 self.inter.variables[name] = variable(name, type, arg)
         else:
             for name, type, arg in zip (self.parameters.keys(), self.parameters.values(), args):
+                self.inter.keepId(name)
                 self.inter.identifiers.append(name)
                 self.inter.variables[name] = arg
-        return self.inter.run(self.lines, self.initialpos, 1)
+        
+        self.inter.resumeId()
+        result =  self.inter.run(self.lines, self.initialpos, 1)
+        errorStack.pop()
+        return result
+
+class clSinter(interpreter):
+    def executeLine(self, line, lineNo, lines, innitialPos, selfPos):
+        if line == "":
+            return 0
+        lineWOL = self.removeLiteral(line, lineNo, line)
+        if "//" in lineWOL:  # get rid of comments
+            line = line[0 : lineWOL.find("//")]
+        line = line.replace("<-", "←")
+        pos = -1
+        identifier = ""
+        char = line[0]
+        while pos < len(line)-1:
+            pos += 1
+            char = line[pos]
+            if not self.isValidChar(char):
+                break
+            identifier += char
+        if identifier == "OUTPUT":
+            self.exeOutput(lineNo, line)
+            return 0
+        elif identifier == "DECLARE":
+            self.exeDeclare(lineNo, line)
+            return 0
+        elif identifier == "CONSTANT":
+            self.exeConstant(lineNo, line)
+            return 0
+        elif identifier == "INPUT":
+            self.exeInput(lineNo, line)
+            return 0
+        elif identifier == "IF":
+            return self.exeIf(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "CASE":
+            return self.exeCase(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "FOR":
+            return self.exeFor(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "REPEAT":
+            return self.exeRepeat(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "WHILE":
+            return self.exeWhile(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "FUNCTION":
+            return self.exeFunction(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "PROCEDURE":
+            return self.exeProcedure(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "RETURN":  # return the value in skip as a list[skip, returnValue]
+            return self.exeReturn(lineNo, line)
+        elif identifier == "CALL":
+            self.exeCall(lineNo, line)
+            return 0
+        elif identifier == "OPENFILE":
+            self.exeOpenfile(lineNo, line)
+            return 0
+        elif identifier == "READFILE":
+            self.exeReadfile(lineNo, line)
+            return 0
+        elif identifier == "WRITEFILE":
+            self.exeWritefile(lineNo, line)
+            return 0
+        elif identifier == "CLOSEFILE":
+            self.exeClosefile(lineNo, line)
+            return 0
+        elif identifier == "TYPE":
+            return self.exeType(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "PUBLIC":
+            return self.exePublic(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "PRIVATE":
+            return self.exePrivate(lineNo, line, lines, innitialPos, selfPos)
+
+        elif identifier in self.identifiers:
+            self.exeAssign(lineNo, line)
+            return 0
+        else:
+            self.err.invaSyn(lineNo, line, -1)
+    
+    def exePublic(self, lineNo, line, lines, innitialPos, selfPos):
+        pos = 5
+        token = ""
+        while pos < len(line)-1:
+            pos += 1
+            char = line[pos]
+            if self.isValidChar(char):
+                pos -=1
+                break
+            elif char ==  " ":
+                pass
+            else:
+                self.err.invaSyn(lineNo, line, line.find(char)+6, None, "Invalid identifier")
+
+        while pos < len(line)-1:
+            pos+=1
+            char = line[pos]
+            if not token:
+                if char.isalpha():
+                    token += char
+                else:
+                    self.err.invaSyn(lineNo, line, line.find(char)+6, None, "Invalid identifier")
+            else:
+                if self.isValidChar(char):
+                    token += char
+                else:
+                    break
+
+        if token == "FUNCTION":
+            return self.exeFunction(lineNo, line, lines, innitialPos, selfPos, pos)
+        elif token == "PROCEDURE":
+            return self.exeProcedure(lineNo, line, lines, innitialPos, selfPos, pos)
+        elif "=" in self.removeLiteral(line, lineNo, line):
+            return self.exeConstant(lineNo, line, 6)
+        else:
+            return self.exeDeclare(lineNo, line, 6)
+    
+    def exePrivate(self, lineNo, line, lines, innitialPos, selfPos):
+        pos = 6
+        token = ""
+        while pos < len(line)-1:
+            pos += 1
+            char = line[pos]
+            if self.isValidChar(char):
+                pos -=1
+                break
+            elif char ==  " ":
+                pass
+            else:
+                self.err.invaSyn(lineNo, line, line.find(char)+6, None, "Invalid identifier")
+
+        while pos < len(line)-1:
+            pos+=1
+            char = line[pos]
+            if not token:
+                if char.isalpha():
+                    token += char
+                else:
+                    self.err.invaSyn(lineNo, line, line.find(char)+6, None, "Invalid identifier")
+            else:
+                if self.isValidChar(char):
+                    token += char
+                else:
+                    break
+
+        if token == "FUNCTION":
+            result = self.exeFunction(lineNo, line, lines, innitialPos, selfPos, pos)
+        elif token == "PROCEDURE":
+            result = self.exeProcedure(lineNo, line, lines, innitialPos, selfPos, pos)
+        elif "=" in self.removeLiteral(line, lineNo, line):
+            result = self.exeConstant(lineNo, line, 6)
+        else:
+            result = self.exeDeclare(lineNo, line, 6)
+        self.privateId.append(self.identifiers.pop())    
+        return result
+
+
+
+class cls:
+    def __init__(self, identifier, initialpos, lines, parent, args):
+        self.identifeir = identifier
+        self.lines = lines
+        self.initialpos = initialpos
+        self.inter = clSinter()
+        self.parent = copy.deepcopy(parent)
+        self.args = args
+        
+    
+    def returnValue(self, identifer, args, lineNo, line):
+        for attribute, value in self.parent.items():
+            setattr(self.inter, attribute, value)
+        self.inter.run(self.lines, self.initialpos, 1)
+        self.inter.err = funcError(self.initialpos, line, identifer)
+        
+        self.pubIds = self.inter.identifiers
+        self.prvIds = self.inter.privateIds
+        self.variables = self.inter.variables
+        self.functions = self.inter.functions
+        self.procedures = self.inter.procedures
+        self.arrays = self.inter.arrays
+        self.constatns = self.inter.constants
+
+        if identifer in self.variables.keys():
+            return self.variables[identifer].returnValue
+        elif identifer in self.functions.keys():
+            return self.functions[identifer].returnValue
+        elif identifer in self.functions.keys():
+            return self.functions[identifer].returnValue
+
 
 class pointer(variable):
     def __init__(self, identifier, type, value=None):
@@ -2104,3 +2539,19 @@ class pointer(variable):
     
     def returnType(self):
         return self.identifier
+
+class enumerated:
+    def __init__(self, identifier, values =[]):
+        self.identifier = identifier
+        self.values= values
+
+class record(function):
+    def __init__(self, identifier, type, initialpos, lines, parameters, lineNo, line):
+        super().__init__(identifier, type, initialpos, lines, parameters)
+        self.inter = funcInterpreter(lineNo, line, self.identifier)
+        self.inter.err = None
+        self.inter.run(lines, initialpos, 1)
+        
+
+    def injectValue(self, identifier, value):
+        self.inter.variables[identifier] = value
