@@ -2612,7 +2612,7 @@ class clSinter(interpreter):
 
 class cls:
     def __init__(self, identifier, initialpos, lines, parent, paras):
-        self.identifeir = identifier
+        self.identifier = identifier
         self.cls = identifier
         self.lines = lines
         self.initialpos = initialpos
@@ -2639,7 +2639,7 @@ class cls:
     
     def generateObj(self, identifier, args):
         result = copy.deepcopy(self)
-        result.cls = self.identifeir
+        result.cls = self.identifier
         result.identifier = identifier
         for name, type, arg in zip (self.parameters.keys(), self.parameters.values(), args):
             result.inter.initId(name)
@@ -2651,17 +2651,21 @@ class cls:
         return self.cls
 
     def attrValue(self, identifier, args, indexes, lineNo, line):
-        self.inter.err= funcError(lineNo, line, self.identifeir)
+        print(self.identifier)
+        self.inter.err= funcError(lineNo, line, self.identifier)
         if identifier in self.variables.keys():
-            return self.variables[identifier].returnValue()
+            result = self.variables[identifier].returnValue()
         elif identifier in self.functions.keys():
-            return self.functions[identifier].returnValue(args, lineNo, line)
+            result = self.functions[identifier].returnValue(args, lineNo, line)
         elif identifier in self.constatns.keys():
-            return self.constatns[identifier].returnValue()
+            result = self.constatns[identifier].returnValue()
         elif identifier in self.arrays.keys():
-            return self.arrays[identifier].returnValue(indexes, lineNo, line)
+            result = self.arrays[identifier].returnValue(indexes, lineNo, line)
         elif identifier in self.procedures.keys():
             self.procedures[identifier].returnValue(args, lineNo, line)
+            result = None
+        errorStack.pop()
+        return result
     
     def attrType(self, identifier):
         if identifier in self.variables.keys():
@@ -2674,12 +2678,12 @@ class cls:
             return self.arrays[identifier].returnType()
 
     def injectValue(self, identifier, indexes, value, lineNo, line):
-        self.inter.err= funcError(lineNo, line, self.identifeir)
+        self.inter.err= funcError(lineNo, line, self.identifier)
         if identifier in self.variables.keys():
             self.variables[identifier].value = value
         elif identifier in self.arrays.keys():
             self.arrays[identifier].injectValue(indexes, value, lineNo, line)
-        
+        errorStack.pop()
 
 
 class pointer(variable):
