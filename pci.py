@@ -79,7 +79,7 @@ class error:
 class interpreter:
     def __init__(self):
 
-        #self.err = error()
+        self.err = error()
 
         self.identifiers = []
         self.variables = {}
@@ -208,6 +208,10 @@ class interpreter:
         lines = code.split("\n")
         self.run(lines, 1, 1)
 
+    # An individual run func will take:
+    # lines: A list of string lines with outmost indent removed
+    # innitialPos: the postion of the first line in the entire code the first line is 1
+    # selfPos: the postion of each iteration in the sub code block, advance with each line
     def run(self, lines, innitialPos, selfPos):
         lineNo = innitialPos-1
         selfPos = selfPos-1
@@ -290,40 +294,12 @@ class interpreter:
             return 0
         else:
             self.err.invaSyn(lineNo, line, -1)
-    
-    def error(self, errType, lineNo, line, pos, detail = None, description = None):
-        if errType == "invaSyn":
-            printRed ("Syntax error: at line " + str(lineNo))
-            printRed ("\t" + str(line))
-            if pos > -1:
-                printRed ("\t" + " "*pos + "^" )
-            if description:
-                 printRed (description)
-        elif errType == "nameErr":
-            printRed ("Name error: <" + str(detail) + "> referenced before assigned at line " + str(lineNo))
-            printRed ("\t" + str(line))
-            if description:
-                printRed (description + " expected")
-        elif errType == "typeErr":
-            printRed ("Type error: <" + str(detail) + "> is unexpected type at line " + str(lineNo))
-            printRed ("\t" + str(line))
-            if description:
-                printRed (description + " expected")
-        elif errType == "runTime":
-            printRed ("Run time error: at line " + str(lineNo))
-            printRed ("\t" + str(line))
-            if pos != -1:
-                printRed ("\t" + " "*pos + "^" )
-            if description:
-                 printRed (description)
-        elif errType == "indexErr":
-            printRed ("Index error: array index  out of range at line "+str(lineNo))
-            printRed ("\t" + str(line))
-        quit()
 
+    # To check is a char can be used in an identifier
     def isValidChar(self, id):
         return id.isalpha() or id in self.digits + "_"
 
+    # check if a token is a array with indexes. return identifier and indexes in a list
     def isArray(self, identifier, lineNo, line):
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
         identifierWOLiteral = identifierWOLiteral.strip()
@@ -341,6 +317,7 @@ class interpreter:
         else:
             return [False, None]
     
+    # check for function, return if its func, proc or method in a object, and arguments
     def isFunction(self, identifier, lineNo, line):
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
         identifierWOLiteral = identifierWOLiteral.strip()
@@ -400,15 +377,19 @@ class interpreter:
                 args[i] = self.getValue(arg, lineNo, line)
             return ["CLASS", name, args, False]        
         
-        elif identifierWOLiteral in self.functions.keys() and self.functions[identifierWOLiteral].parameters == {}:
-            return ["FUNC", identifierWOLiteral, [], False]
-        elif identifierWOLiteral in self.procedures.keys() and self.procedures[identifierWOLiteral].parameters == {}:
-            return ["PROC", identifierWOLiteral, [], False]
-        elif identifierWOLiteral in self.classes.keys() and self.classes[identifierWOLiteral].parameters == {}:
-            return ["CLASS", identifierWOLiteral, [], False]
+        elif identifierWOLiteral in self.functions.keys(): #and self.functions[identifierWOLiteral].parameters == {}:
+            #return ["FUNC", identifierWOLiteral, [], False]
+            self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)-1, None, "Brackets required")
+        elif identifierWOLiteral in self.procedures.keys(): #and self.procedures[identifierWOLiteral].parameters == {}:
+            #return ["PROC", identifierWOLiteral, [], False]
+            self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)-1, None, "Brackets required")
+        elif identifierWOLiteral in self.classes.keys(): #and self.classes[identifierWOLiteral].parameters == {}:
+            #return ["CLASS", identifierWOLiteral, [], False]
+            self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)-1, None, "Brackets required")
         else:
             return [False, None, None, None]
     
+    # check if a string matches the format of date in dd/mm/yyyy
     def isDate(self, id, lineNo, line):
         if re.match(r'^\d{2}/\d{2}/\d{4}$', id):
             try:
@@ -418,7 +399,7 @@ class interpreter:
         else:
             return False
                 
-
+    # takes string TRUE and FALSE to python booleans, bi-directional
     def boolConvert(self, input):
         if input == "TRUE":
             return True
@@ -429,6 +410,7 @@ class interpreter:
         elif input == False:
             return "FALSE"
     
+    # removes the identifier's previous occurance to enable redeclare
     def initId(self, identifier, lineNo =0, line =None):
         if identifier[0].isalpha():
             for c in identifier[1:]:
@@ -464,6 +446,7 @@ class interpreter:
         elif identifier in (self.keywords or (self.keywords).lower()):
             self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
     
+    # in func/proc, combine the parameters with global dictionary, keep conflick in a temp dict
     def keepId(self, identifier):
         self.tempvariables = {}
         self.tempconstants = {}
@@ -483,6 +466,7 @@ class interpreter:
             elif identifier in self.constants.keys():
                 self.tempconstants[identifier] = self.constants.pop(identifier)
 
+    # After func/proc, remove parameters and take temp dict back to global dictionary
     def resumeId(self):
         for id, value in zip(self.tempvariables.keys(), self.tempvariables.values()):
             self.variables[id] = value
@@ -499,6 +483,7 @@ class interpreter:
             del self.variables[id]
             self.constants[id] = value
 
+    # checks if a token is object with attr/method, retrun attr name, args/indexes
     def isObject(self, identifier, lineNo, line):
         if "." in identifier: 
             obj = identifier[0:identifier.find(".")].strip()
@@ -525,6 +510,7 @@ class interpreter:
         else:
             return [False, None, None]
 
+    # checks if a token is a class with args
     def isClass(self, identifier, lineNo, line):
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
         identifierWOLiteral = identifierWOLiteral.strip()
@@ -1312,7 +1298,7 @@ class interpreter:
 
         self.initId(identifier, lineNo, line)
         self.identifiers.append(identifier)
-        self.procedures[identifier] = procedure(identifier, type, lineNo+1, linesToExe, byref, paras)
+        self.procedures[identifier] = procedure(identifier, type, lineNo+1, linesToExe, byref, vars(self), paras)
         return skip
 
     def exeReturn(self, lineNo, line):
@@ -1322,10 +1308,20 @@ class interpreter:
 
     def exeCall(self, lineNo, line):
         identifier = line[4:].strip()
-        proc = self.isFunction(identifier, lineNo, line)
-        if not proc[0]:
-            self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, "<"+str(identifier)+"> is not callable")
-        (self.procedures[proc[1]]).returnValue(proc[2], lineNo, line, proc[3])
+        if self.isFunction(identifier, lineNo, line)[0]:
+            proc = self.isFunction(identifier, lineNo, line)
+            if not proc[0] == "FUNC":
+                self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, "<"+str(identifier)+"> function is not callable")
+            (self.procedures[proc[1]]).returnValue(proc[2], lineNo, line, proc[3])
+        elif self.isObject(identifier, lineNo, line)[0] == "OBJECT":
+            obj = self.isObject(identifier, lineNo, line)
+            name = obj[1]
+            attr = obj[2]
+            args = obj[3]
+            indexes = obj[4]
+            if not attr in self.variables[name].value.inter.procedures.keys():
+                self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, "<"+str(identifier)+"> s not callable")
+            self.variables[name].value.attrValue(attr, args, indexes, lineNo, line)
         return 0
 
     def exeOpenfile(self, lineNo, line):
@@ -1587,7 +1583,8 @@ class interpreter:
 
 
 ##### Utility functions #####
-
+    
+    # remove literal values, keep the bounds like quotes, everything removed is replaced by space
     def removeLiteral(self, token, lineNo, line):
         
         tokenWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
@@ -1658,8 +1655,10 @@ class interpreter:
             else:
                 tokenWOLiteral += c
         return tokenWOLiteral
-    
+    # split a token by commas in list, not affected by commas in string or other literals
     def commaSplit(self, expression, lineNo, line):
+        if expression == "":
+            return []
         tokens = []
         expressionWOLiteral = self.removeLiteral(expression, lineNo, line)
         tokensWOL = expressionWOLiteral.split(",")  # Seprate by commas
@@ -1713,7 +1712,7 @@ class interpreter:
             else:
                 pass
         if "&" in identifierWOLiteral:  # apart from string literal, there is a &
-            return self.strComb(identifier, lineNo, line)
+            return self.strComb(identifier, lineNo, line) 
         elif all(n in self.digits for n in identifier) or (identifier.startswith("-") and 
                                                            all(n in self.digits for n in identifier[1:])):  # it is a number
             if "." in identifier:
@@ -1776,6 +1775,8 @@ class interpreter:
             attr = obj[2]
             args = obj[3]
             indexes = obj[4]
+            if attr in self.variables[name].value.inter.procedures.keys():
+                 self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, "A procedure has no return value")
             return self.variables[name].value.attrValue(attr, args, indexes, lineNo, line)
         elif identifier in (self.keywords or (self.keywords).lower()):
             self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
@@ -2420,6 +2421,7 @@ class function:
     
     def returnValue(self, args, lineNo, line):
         self.inter = funcInterpreter(lineNo, line, self.identifier)
+        self.inter.keepId(None)
         for attribute, value in self.attributes.items():
             setattr(self.inter, attribute, value)
         for name, type, arg in zip (self.parameters.keys(), self.parameters.values(), args):
@@ -2442,6 +2444,7 @@ class procedure(function):
     
     def returnValue(self, args, lineNo, line, byref):
         self.inter = funcInterpreter(lineNo, line, self.identifier)
+        self.inter.keepId(None)
         for attribute, value in self.attributes.items():
             setattr(self.inter, attribute, value)
         if not byref:
@@ -2651,18 +2654,17 @@ class cls:
         return self.cls
 
     def attrValue(self, identifier, args, indexes, lineNo, line):
-        print(self.identifier)
         self.inter.err= funcError(lineNo, line, self.identifier)
         if identifier in self.variables.keys():
             result = self.variables[identifier].returnValue()
         elif identifier in self.functions.keys():
             result = self.functions[identifier].returnValue(args, lineNo, line)
-        elif identifier in self.constatns.keys():
-            result = self.constatns[identifier].returnValue()
+        elif identifier in self.constants.keys():
+            result = self.constants[identifier].returnValue()
         elif identifier in self.arrays.keys():
             result = self.arrays[identifier].returnValue(indexes, lineNo, line)
         elif identifier in self.procedures.keys():
-            self.procedures[identifier].returnValue(args, lineNo, line)
+            self.procedures[identifier].returnValue(args, lineNo, line, False)
             result = None
         errorStack.pop()
         return result
@@ -2672,8 +2674,8 @@ class cls:
             return self.variables[identifier].returnType()
         elif identifier in self.functions.keys():
             return self.functions[identifier].returnType()
-        elif identifier in self.constatns.keys():
-            return self.constatns[identifier].returnType()
+        elif identifier in self.constants.keys():
+            return self.constants[identifier].returnType()
         elif identifier in self.arrays.keys():
             return self.arrays[identifier].returnType()
 
