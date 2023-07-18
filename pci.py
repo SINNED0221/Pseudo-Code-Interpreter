@@ -1655,6 +1655,7 @@ class interpreter:
             else:
                 tokenWOLiteral += c
         return tokenWOLiteral
+    
     # split a token by commas in list, not affected by commas in string or other literals
     def commaSplit(self, expression, lineNo, line):
         if expression == "":
@@ -1668,6 +1669,10 @@ class interpreter:
             pos += len(tokenWOL)+1
         return tokens
 
+    # return the value of a token, literal or identifer
+    # for int and real, it will be returned as int or float
+    # for string and char value, it will be returned as string with quotes like '"test"'
+    # for other types the value will be directly returned as string "TRUE"
     def getValue(self, identifier, lineNo, line):
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
         if not identifier:
@@ -1813,6 +1818,7 @@ class interpreter:
         else:
             self.err.nameErr(lineNo, line, int(line.find(identifier)/2), identifier)
 
+    # get the value as a string ready to be printed
     def getString(self, identifier, lineNo, line):
         identifier = str(self.getValue(identifier, lineNo, line))
         if identifier.startswith('"'):
@@ -1846,6 +1852,7 @@ class interpreter:
         else:
             return identifier
 
+    # return type of a token as a string
     def getType(self, identifier, lineNo, line):
         identifier = str(identifier)
         identifier = identifier.strip()
@@ -1947,6 +1954,7 @@ class interpreter:
         else:
             self.err.nameErr(lineNo, line, int(line.find(identifier)/2), identifier)
 
+    # evaluate math expression
     def evalExpr(self, expression, lineNo, line):
 
         # TODO make parser depend on split of operators
@@ -2103,6 +2111,7 @@ class interpreter:
             applyOperator()
         return valueStack[0]  # The final value in the value stack is the result
 
+    # evaaluate ligic expression
     def evalLogic(self, expression, lineNo, line):
 
         expressionWOL = self.removeLiteral(expression, lineNo, line)
@@ -2242,6 +2251,7 @@ class interpreter:
             applyOperator()
         return valueStack[0]  # The final value in the value stack is the result
     
+    # evaluate relational expression
     def evalRelation(self, expression, lineNo, line):
         pos = -1
         id = ""
@@ -2303,6 +2313,7 @@ class interpreter:
             else:
                 return "FALSE"
 
+    # evaluate & operation
     def strComb(self, expression, lineNo, line):
         tokens = expression.split("&")
         string = '"'
@@ -2316,7 +2327,7 @@ class interpreter:
         return string
 
 ##### Classes #####
-
+# these classes will be the value of a identifier in the dictionary with the identifier as the key
 class variable:
     def __init__(self, identifier, type, value = None):
         self.identifier = identifier
@@ -2367,8 +2378,6 @@ class array:
             else:
                 element = element[index-bound[0]]
 
-
-
 class funcError(error):
 
     def __init__(self, initialNo, initialLine, identifier):
@@ -2400,12 +2409,12 @@ class funcError(error):
         printRed (mess)
         quit()
 
-
+# the interpreter for function class, replaces error class with funcError, 
+# which can output postion of where it is called
 class funcInterpreter(interpreter):
     def __init__(self, initialNo, initialLine, identifier):
         super().__init__()
         self.err = funcError(initialNo, initialLine, identifier)
-
 
 class function:
     def __init__(self, identifier, type, initialpos, lines, attributes, parameters = {} ):
@@ -2524,6 +2533,8 @@ class clSinter(interpreter):
             return 0
         elif identifier == "TYPE":
             return self.exeType(lineNo, line, lines, innitialPos, selfPos)
+        elif identifier == "CLASS":
+            return self.exeClass(lineNo, line, lines, innitialPos, selfPos)
         elif identifier == "PUBLIC":
             return self.exePublic(lineNo, line, lines, innitialPos, selfPos)
         elif identifier == "PRIVATE":
@@ -2611,8 +2622,6 @@ class clSinter(interpreter):
         self.privateIds.append(self.identifiers.pop())    
         return result
 
-
-
 class cls:
     def __init__(self, identifier, initialpos, lines, parent, paras):
         self.identifier = identifier
@@ -2686,7 +2695,6 @@ class cls:
         elif identifier in self.arrays.keys():
             self.arrays[identifier].injectValue(indexes, value, lineNo, line)
         errorStack.pop()
-
 
 class pointer(variable):
     def __init__(self, identifier, type, value=None):
