@@ -1,3 +1,20 @@
-OUTPUT "SUCK"
-OUTPUT "MA"
-OUTPUT "BALLZ"
+CLASS mf(a:INTEGER, b:INTEGER)
+    PUBLIC x:INTEGER
+    PRIVATE y :INTEGER
+    y <- 3
+    PUBLIC FUNCTION rety (m:INTEGER) RETURNS INTEGER
+        OUTPUT a
+        OUTPUT b
+        RETURN y+m
+    ENDFUNCTION
+    PUBLIC PROCEDURE outy
+        OUTPUT a
+        OUTPUT b
+        OUTPUT x
+    ENDPROCEDURE
+ENDCLASS
+DECLARE ojbk:OBJECT
+ojbk <- NEW mf(114, 514)
+ojbk.x <- 69
+OUTPUT ojbk.x
+CALL ojbk.outy

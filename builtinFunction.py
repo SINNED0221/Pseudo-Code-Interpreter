@@ -391,6 +391,20 @@ class TODAY:
         result = dt.strftime("%d/%m/%Y")
         return result
 
+class EOF:
+    def __init__(self):
+        self.identifier = "EOF"
+        self.type = "BOOLEAN"
+        self.parameters = {"FileName": "STRING"}
+        self.lines = []
+        self.initialpos = 0 
+    
+    def returnType(self):
+        return self.type
+    
+    def returnValue(self, args, lineNo, line):
+        pass
+
 builtIns = {"LEFT":LEFT(),
             "RIGHT":RIGHT(),
             "MID": MID(),
@@ -411,5 +425,6 @@ builtIns = {"LEFT":LEFT(),
             "YEAR": YEAR(),
             "DAYINDEX": DAYINDEX(),
             "SETDATE": SETDATE(),
-            "TODAY": TODAY()
+            "TODAY": TODAY(),
+            "EOF":EOF()
             }

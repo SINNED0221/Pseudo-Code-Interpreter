@@ -2,11 +2,11 @@ import builtinFunction as bif
 from datetime import datetime, date
 import re
 import copy
+from settings import *
 
 def printRed(skk): print("\033[91m {}\033[00m" .format(skk))
 
 errorStack = []
-maxRecur = 69
 
 class error:
     
@@ -231,7 +231,8 @@ class interpreter:
         lineWOL = self.removeLiteral(line, lineNo, line)
         if "//" in lineWOL:  # get rid of comments
             line = line[0 : lineWOL.find("//")]
-        line = line.replace("<-", "←")
+        if arrowReplace:
+            line = line.replace("<-", "←")
         pos = -1
         identifier = ""
         char = line[0]
