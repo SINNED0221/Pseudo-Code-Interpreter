@@ -57,11 +57,13 @@ class error:
              printRed (description)     
         quit()
     def argErr(self, lineNo, line, pos, detail = None, description = None):
+        exp = description[0]
+        got = description[1]
         printRed ("Argument Error: at line " + str(lineNo))
         printRed ("\t" + str(line))
         if pos > -1:
             printRed ("\t" + " "*pos + "^" )
-        printRed ("<"+detail+"> missing "+str(description)+" positional argument(s)")     
+        printRed ("Expect "+str(exp)+" argument(s), got "+str(got))     
         quit()
     def valErr(self, lineNo, line, pos, detail = None, description = None):
         printRed("Value error: '"+str(detail)+"' does not match format '"+description+"' at line "+str(lineNo))
@@ -93,6 +95,8 @@ class interpreter:
         self.enuIds = []
         self.records = {}
         self.classes = {}
+
+        self.returnType = None
 
         for n, f in zip(bif.builtIns.keys(), bif.builtIns.values()):
             self.identifiers.append(n)
@@ -329,9 +333,12 @@ class interpreter:
             name = name.strip()
             argStr = identifier[identifier.find("(")+1: -1].strip()
             args = self.commaSplit(argStr, lineNo, line)
-            if len(args)!= len(self.functions[name].parameters):
+            if len(args)< len(self.functions[name].parameters):
                 self.err.argErr(lineNo, line, line.find(args[-1])+len(args[-1])//2, identifier, 
-                                len(self.functions[identifier].parameters)-len(args))
+                                [len(self.functions[name].parameters), len(args)])
+            elif len(args)> len(self.functions[name].parameters):
+                self.err.argErr(lineNo, line, line.find(args[-1])+len(args[-1])//2, identifier, 
+                                [len(self.functions[name].parameters), len(args)])
             paraTypes = self.functions[name].parameters.values()
             for i, arg, type in zip(range(len(args)), args, paraTypes):
                 if self.getType(arg, lineNo, line) != type:
@@ -349,9 +356,12 @@ class interpreter:
 
             args = self.commaSplit(argStr, lineNo, line)
 
-            if len(args)!= len(self.procedures[name].parameters):
+            if len(args)< len(self.procedures[name].parameters):
                 self.err.argErr(lineNo, line, line.find(args[-1])+len(args[-1])//2, identifier, 
-                                len(self.procedures[name].parameters)-len(args))
+                                [len(self.procedures[name].parameters), len(args)])
+            elif len(args)> len(self.procedures[name].parameters):
+                self.err.argErr(lineNo, line, line.find(args[-1])+len(args[-1])//2, identifier, 
+                                [len(self.procedures[name].parameters), len(args)])
             if not byref:
                 for i, arg in zip(range(len(args)), args):
                     args[i] = self.getValue(arg, lineNo, line)
@@ -368,9 +378,12 @@ class interpreter:
             name = name.strip()
             argStr = identifier[identifier.find("(")+1: -1].strip()
             args = self.commaSplit(argStr, lineNo, line)
-            if len(args)!= len(self.classes[name].parameters):
+            if len(args)< len(self.classes[name].parameters):
                 self.err.argErr(lineNo, line, line.find(args[-1])+len(args[-1])//2, identifier, 
-                                len(self.functions[identifier].parameters)-len(args))
+                                [len(self.classes[name].parameters), len(args)])
+            elif len(args)> len(self.classes[name].parameters):
+                self.err.argErr(lineNo, line, line.find(args[-1])+len(args[-1])//2, identifier, 
+                                [len(self.classes[name].parameters), len(args)])
             paraTypes = self.classes[name].parameters.values()
             for i, arg, type in zip(range(len(args)), args, paraTypes):
                 if self.getType(arg, lineNo, line) != type:
@@ -1304,7 +1317,11 @@ class interpreter:
 
     def exeReturn(self, lineNo, line):
         expression = line[6:].strip()
-        # TODO type check
+        type = self.getType(expression, lineNo, line)
+        if self.returnType == None:
+            self.err.invaSyn(lineNo, line, -1, None, "RETURN is only used inside a function")
+        elif type != self.returnType:
+            self.err.typeErr(lineNo, line, line.find(expression)+len(expression)//2, expression, self.returnType)
         return[0, self.getValue(expression, lineNo, line)]
 
     def exeCall(self, lineNo, line):
@@ -2438,6 +2455,7 @@ class function:
             self.inter.keepId(name)
             self.inter.identifiers.append(name)
             self.inter.variables[name] = variable(name, type, arg)
+        self.inter.returnType = self.type
         result =  self.inter.run(self.lines, self.initialpos, 1)
         self.inter.resumeId()
         errorStack.pop()
@@ -2489,49 +2507,52 @@ class clSinter(interpreter):
             if not self.isValidChar(char):
                 break
             identifier += char
-        if identifier == "OUTPUT":
-            self.exeOutput(lineNo, line)
-            return 0
-        elif identifier == "DECLARE":
+        #if identifier == "OUTPUT":
+        #    self.exeOutput(lineNo, line)
+        #    return 0
+        if identifier == "DECLARE":
             self.exeDeclare(lineNo, line)
             return 0
         elif identifier == "CONSTANT":
             self.exeConstant(lineNo, line)
             return 0
-        elif identifier == "INPUT":
-            self.exeInput(lineNo, line)
-            return 0
-        elif identifier == "IF":
-            return self.exeIf(lineNo, line, lines, innitialPos, selfPos)
-        elif identifier == "CASE":
-            return self.exeCase(lineNo, line, lines, innitialPos, selfPos)
-        elif identifier == "FOR":
-            return self.exeFor(lineNo, line, lines, innitialPos, selfPos)
-        elif identifier == "REPEAT":
-            return self.exeRepeat(lineNo, line, lines, innitialPos, selfPos)
-        elif identifier == "WHILE":
-            return self.exeWhile(lineNo, line, lines, innitialPos, selfPos)
-        elif identifier == "FUNCTION":
-            return self.exeFunction(lineNo, line, lines, innitialPos, selfPos)
-        elif identifier == "PROCEDURE":
-            return self.exeProcedure(lineNo, line, lines, innitialPos, selfPos)
-        elif identifier == "RETURN":  # return the value in skip as a list[skip, returnValue]
-            return self.exeReturn(lineNo, line)
-        elif identifier == "CALL":
-            self.exeCall(lineNo, line)
-            return 0
-        elif identifier == "OPENFILE":
-            self.exeOpenfile(lineNo, line)
-            return 0
-        elif identifier == "READFILE":
-            self.exeReadfile(lineNo, line)
-            return 0
-        elif identifier == "WRITEFILE":
-            self.exeWritefile(lineNo, line)
-            return 0
-        elif identifier == "CLOSEFILE":
-            self.exeClosefile(lineNo, line)
-            return 0
+        
+        # youre not gonna need those in a class right?
+
+        #elif identifier == "INPUT":
+        #    self.exeInput(lineNo, line)
+        #    return 0
+        #elif identifier == "IF":
+        #    return self.exeIf(lineNo, line, lines, innitialPos, selfPos)
+        #elif identifier == "CASE":
+        #    return self.exeCase(lineNo, line, lines, innitialPos, selfPos)
+        #elif identifier == "FOR":
+        #    return self.exeFor(lineNo, line, lines, innitialPos, selfPos)
+        #elif identifier == "REPEAT":
+        #    return self.exeRepeat(lineNo, line, lines, innitialPos, selfPos)
+        #elif identifier == "WHILE":
+        #    return self.exeWhile(lineNo, line, lines, innitialPos, selfPos)
+        #elif identifier == "FUNCTION":
+        #    return self.exeFunction(lineNo, line, lines, innitialPos, selfPos)
+        #elif identifier == "PROCEDURE":
+        #    return self.exeProcedure(lineNo, line, lines, innitialPos, selfPos)
+        #elif identifier == "RETURN":  # return the value in skip as a list[skip, returnValue]
+        #    return self.exeReturn(lineNo, line)
+        #elif identifier == "CALL":
+        #    self.exeCall(lineNo, line)
+        #    return 0
+        #elif identifier == "OPENFILE":
+        #    self.exeOpenfile(lineNo, line)
+        #    return 0
+        #elif identifier == "READFILE":
+        #    self.exeReadfile(lineNo, line)
+        #    return 0
+        #elif identifier == "WRITEFILE":
+        #    self.exeWritefile(lineNo, line)
+        #    return 0
+        #elif identifier == "CLOSEFILE":
+        #    self.exeClosefile(lineNo, line)
+        #    return 0
         elif identifier == "TYPE":
             return self.exeType(lineNo, line, lines, innitialPos, selfPos)
         elif identifier == "CLASS":
