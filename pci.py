@@ -585,9 +585,10 @@ class interpreter:
             valueType = "REAL"
         elif value in self.enuIds:
             for e in self.enumerateds.values:
-                for v in e.values:
+                for v, n in zip(e.values, range(len(e.values))):
                     if value == v:
-                        valueType = e.identifier
+                        valueType = "INTEGER"
+                        value = n
         else:
             value = '"'+value+'"'
             valueType = "STRING"
@@ -621,6 +622,10 @@ class interpreter:
         if type in self.types:  
             for identifier in ids:
                 identifier = identifier.strip()
+
+                if type in self.enumerateds.keys():
+                    type = "INTEGER"
+
                 self.initId(identifier, lineNo, line)
                 self.identifiers.append(identifier)
                 self.variables[identifier] = variable(identifier, type)
@@ -842,7 +847,7 @@ class interpreter:
                         self.err.indentErr(lineNo+pos, subLine, 0, None, "Unexpected indent")
                 subLine = subLine[indentation:]
                 temp.append(subLine)
-        self.run(temp, startPos +1, 1)
+        self.run(temp, startPos, 1)
 
         return skip
 
@@ -931,7 +936,7 @@ class interpreter:
                                 subLine = subLine[subIndent:]
                                 linesToExe.append(subLine)
                             elif not(subLine[indentation:].startswith(" ")):
-                                self.run(linesToExe, startPos +1, 1)
+                                self.run(linesToExe, startPos, 1)
                                 return skip
                             else:
                                 self.err.indentErr(lineNo+pos, subLine, -1, None, "Unexpected indent")
@@ -1026,7 +1031,7 @@ class interpreter:
         
         for i in range (lower, upper+1, step):
             self.variables[left].value = i
-            self.run(linesToExe, startPos +1, 1)
+            self.run(linesToExe, startPos+1, 1)
         return skip
 
     def exeRepeat(self, lineNo, line, lines, innitialPos, selfPos):
@@ -1073,13 +1078,13 @@ class interpreter:
                        self.err.indentErr(lineNo+pos, subLine, 0, None, "Unexpected indent")
                subLine = subLine[indentation:]
                linesToExe.append(subLine)
-        self.run(linesToExe, startPos +1, 1)
+        self.run(linesToExe, startPos+1, 1)
         
         if self.getType(expression, endPos+1, endLine) != "BOOLEAN":
             self.err.typeErr(endPos+1, endLine, subLine.find(expression)+len(expression)//2, expression, "BOOLEAN")
         until = self.boolConvert(self.getValue(expression, endPos+1, endLine))
         while not until:
-            self.run(linesToExe, startPos +1, 1)
+            self.run(linesToExe, startPos, 1)
             until = self.boolConvert(self.getValue(expression, endPos+1, endLine))
         
         return skip
@@ -1125,9 +1130,9 @@ class interpreter:
                subLine = subLine[indentation:]
                linesToExe.append(subLine)
         
-        if self.getType(expression, startPos +1, whileLine) != "BOOLEAN":
+        if self.getType(expression, startPos, whileLine) != "BOOLEAN":
             self.err.typeErr(startPos, whileLine, subLine.find(expression)+len(expression)//2, expression, "BOOLEAN")
-        whileBool = self.boolConvert(self.getValue(expression, startPos +1, whileLine))
+        whileBool = self.boolConvert(self.getValue(expression, startPos, whileLine))
         while whileBool:
             self.run(linesToExe, lineNo+1, 1)
             whileBool = self.boolConvert(self.getValue(expression, endPos+1, whileLine))
@@ -1726,9 +1731,9 @@ class interpreter:
         
         elif identifier in self.enuIds:
             for e in self.enumerateds.values():
-                for v in e.values:
+                for v, n in zip(e.values, range(len(e.values))):
                     if identifier == v:
-                        result = v
+                        result = n
 
         elif any(op in identifierWOLiteral for op in self.logicOperators):
             valid = False
@@ -1804,6 +1809,7 @@ class interpreter:
         
     
         elif identifier.startswith("^"):
+            # TODO support array
             identifier = identifier[1:]
             type = self.getType(identifier, lineNo, line)
             if not identifier in self.variables.keys():
@@ -1814,7 +1820,7 @@ class interpreter:
             type = self.getType(identifier, lineNo, line)
             if not type in self.pointers.keys():
                  self.err.typeErr(lineNo, line, -1, identifier, "pointer")
-            result = str(self.variables[identifier].value.value)
+            result = self.variables[identifier].value.value
         
         elif self.isObject(identifier, lineNo, line)[0] == "RECORD":
             record = self.isObject(identifier, lineNo, line)
@@ -1916,7 +1922,7 @@ class interpreter:
             for e in self.enumerateds.values():
                 for v in e.values:
                     if identifier == v:
-                        return e.identifier
+                        return "INTEGER"
         elif all(n in self.digits+"." for n in identifier):  # it is a number
             if "." in identifier:
                 return "REAL"
