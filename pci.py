@@ -92,7 +92,7 @@ class error:
 class interpreter:
     def __init__(self):
 
-        self.err = error()
+        #self.err = error()
 
         self.identifiers = []
         self.variables = {}
@@ -768,16 +768,19 @@ class interpreter:
 
 
             leftType = self.getType(left, lineNo, line)
-            rightType = self.getType(right, lineNo, line)
+            ignoreDate = True
+            if leftType == "DATE":
+                ignoreDate = False
+            rightType = self.getType(right, lineNo, line, ignoreDate)
             if rightType[0] == "POINTER":
                 if not leftType in self.pointers.keys() or self.pointers[leftType].type != rightType[1]:
                     self.err.typeErr(lineNo, line, -1, left, rightType[1]+" pointer")
                 rightType = leftType
-            right = self.getValue (right, lineNo, line)
+            right = self.getValue (right, lineNo, line, ignoreDate)
             if left in (self.constants).keys():
                 self.err.invaSyn(lineNo, line, (line.find(left)+len(left))//2, None, "A constant is immutable")
             elif leftType != rightType:
-                self.err.typeErr(lineNo, line, (line.find(right)+len(right))//2, right, leftType)
+                self.err.typeErr(lineNo, line, (line.find(str(right))+len(str(right)))//2, right, leftType)
             elif left in (self.variables).keys():
                 self.variables[left].value = right
             elif (self.isArray(left, lineNo, line))[0] == True:
@@ -1735,7 +1738,7 @@ class interpreter:
     # for int and real, it will be returned as int or float
     # for string and char value, it will be returned as string with quotes like '"test"'
     # for other types the value will be directly returned as string "TRUE"
-    def getValue(self, identifier, lineNo, line):
+    def getValue(self, identifier, lineNo, line, ignoreDate = True):
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
         if not identifier:
             return identifier
@@ -1815,7 +1818,7 @@ class interpreter:
             else:
                 result = identifier
         
-        elif self.isDate(identifier, lineNo, line):
+        elif self.isDate(identifier, lineNo, line) and not ignoreDate:
             result = identifier
         
     
@@ -1923,7 +1926,7 @@ class interpreter:
 
     # return type of a token as a string
     # NOTICE the priorty: literal > expression > identifier
-    def getType(self, identifier, lineNo, line):
+    def getType(self, identifier, lineNo, line, ignoreDate = True):
         identifier = str(identifier)
         identifier = identifier.strip()
         identifierWOLiteral = self.removeLiteral(identifier, lineNo, line)
@@ -1969,7 +1972,7 @@ class interpreter:
                 return "CHAR"
         elif identifier in ["TRUE", "FALSE"]:
             return "BOOLEAN"
-        elif self.isDate(identifier, lineNo, line):
+        elif self.isDate(identifier, lineNo, line) and not ignoreDate:
             return "DATE"
         
         #####expression######
