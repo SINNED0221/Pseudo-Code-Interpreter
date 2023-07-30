@@ -16,13 +16,15 @@ class error:
         if pos > -1:
             printRed ("\t" + " "*pos + "^" )
         if description:
-             printRed (description)     
+             printRed (description)
+        input()     
         quit()
     def nameErr(self, lineNo, line, pos, detail = None, description = None):
         printRed ("Name error: <" + str(detail) + "> referenced before assigned at line " + str(lineNo))
         printRed ("\t" + str(line))
         if description:
             printRed (description)
+        input() 
         quit()
     def nameConErr(self, lineNo, line, pos, detail = None, description = None):
         printRed ("Name error: <" + str(detail) + "> conflicted with "+description+" at line " + str(lineNo))
@@ -33,6 +35,7 @@ class error:
         printRed ("\t" + str(line))
         if description:
             printRed (description + " expected")
+        input()
         quit()
     def runTime(self, lineNo, line, pos, detail = None, description = None):
         printRed ("Run time error: at line " + str(lineNo))
@@ -41,12 +44,14 @@ class error:
             printRed ("\t" + " "*pos + "^" )
         if description:
              printRed (description)
+        input()
         quit()
     def indexErr(self, lineNo, line, pos, detail = None, description = None):
         printRed ("Index error: array index  out of range at line "+str(lineNo))
         printRed ("\t" + str(line))
         if description:
              printRed (description)
+        input()
         quit()
     def indentErr(self, lineNo, line, pos, detail = None, description = None):
         printRed ("Indentation Error: at line " + str(lineNo))
@@ -55,6 +60,7 @@ class error:
             printRed ("\t" + " "*pos + "^" )
         if description:
              printRed (description)     
+        input()
         quit()
     def argErr(self, lineNo, line, pos, detail = None, description = None):
         exp = description[0]
@@ -64,18 +70,23 @@ class error:
         if pos > -1:
             printRed ("\t" + " "*pos + "^" )
         printRed ("Expect "+str(exp)+" argument(s), got "+str(got))     
+        input()
         quit()
     def valErr(self, lineNo, line, pos, detail = None, description = None):
         printRed("Value error: '"+str(detail)+"' does not match format '"+description+"' at line "+str(lineNo))
+        input()
         quit()
     def fileNF(self, lineNo, line, pos, detail = None, description = None):
         printRed("File not found error: No such file opened <"+detail+"> at line "+ str(lineNo))
+        input()
         quit()
     def attrErr(self, lineNo, line, pos, detail = None, description = None):
         printRed("Attribute error: <"+detail+"> has no attribute <"+description+"> at line "+ str(lineNo))
+        input()
         quit()
     def attrUnAss(self, lineNo, line, pos, detail = None, description = None):
         printRed("Attribute error: <"+detail+"> 's' <"+description+"> is not muttable at line "+ str(lineNo))
+        input()
         quit()
 
 class interpreter:
