@@ -92,7 +92,7 @@ class error:
 class interpreter:
     def __init__(self):
 
-        #self.err = error()
+        self.err = error()
 
         self.identifiers = []
         self.variables = {}
