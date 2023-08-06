@@ -92,7 +92,7 @@ class error:
 class interpreter:
     def __init__(self):
 
-        self.err = error()
+        #self.err = error()
 
         self.identifiers = []
         self.variables = {}
@@ -2005,7 +2005,10 @@ class interpreter:
                     pos = identifierWOLiteral.find(op, pos+1)
             
             if valid:
-                return self.getType(self.evalExpr(identifier, lineNo, line), lineNo, line)
+                if "/" in identifier or "." in identifier:
+                    return "REAL"
+                else:
+                    return "INTEGER"
             else:
                 pass
         elif "&" in identifierWOLiteral:  # apart from string literal, there is a &

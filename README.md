@@ -75,7 +75,7 @@ The logical values `TRUE` and `FALSE`.
 #### `DATE`
 A valid date in the form of dd/mm/yyyy.
 
-A literal of date will also be in that form, notice that as a date literal will likely conflict with a expression with `/` operator, a `DATE` literal is only checked when assigning to a variable of `DATE` type. `INPUT` will not take `DATE` literal, if you are trying to get a `DATE` with `INPUT`, see built-in functions.
+A literal of date will also be in that form, notice that as a date literal will likely conflict with an expression with `/` operator, a `DATE` literal is only checked when assigning to a variable of `DATE` type. `INPUT` will not take `DATE` literal, if you are trying to get a `DATE` with `INPUT`, see built-in functions.
 ### Variable
 A variable must be declared with type before any usage.
 
