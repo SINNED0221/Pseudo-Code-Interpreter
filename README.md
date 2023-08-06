@@ -23,14 +23,6 @@ Run `PseudoCodeInterpreter.exe` with the path of the file as parameter.
 
     PseudoCodeInterpreter.exe path\file.pseu
 
-## Settings
-There are several setting option in `settings.py` that you can toggle.
-### `maxRecur`
-Determine the max recursion depth of the interpreter, notice that it cannot exceed python's recursive depth of 1000.
-
-### `arrowReplace`
-`arrowReplace = True` : `<-` will be automatically replaced by `←`, which is  the default assign operator. Notice that when it is enabled, things like `IF x < -1 THEN` must have a white space between `<` and `-`.
-
 ## Syntax
 Ideally this interpreter can be used directly with the cambridge official pseudo code guide as reference. But due to some uncertain nature of the pseudo code syntax, some bit might require extra explanation.
 
