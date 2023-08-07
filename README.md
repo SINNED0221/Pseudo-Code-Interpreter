@@ -13,7 +13,7 @@ Simply execute `PseudoCodeInterpreter.exe` and type in the code.
     ABC
 
 #### Script Mode
-They are several ways you can execute a pseudo code script, notice that only files with the extension `.pseu` will be accepted.
+There are several ways you can execute a pseudo code script, notice that only files with the extension `.pseu` will be accepted.
 ###### Drag and Drop
 Simply drag and drop the `.pseu` file to `PseudoCodeInterpreter.exe` to execute the script.
 ###### Open with
