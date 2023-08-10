@@ -3,9 +3,12 @@ This is an interpreter that aims to provide **full-syllabus** support for the CA
 
 This interpreter can directly run files written in pseudo code with the extension `.pseu`, or it can run single lines in interactive mode. Error messages will be raised if error occurred. A debugger is currently under development.
 
-Also, a plug-in for vscode that can do syntax highlighting is also under development.
 ## Quick Start Guide
 ### For Windows
+#### Vscode Extension
+https://marketplace.visualstudio.com/items?itemName=DennisZhang.caie-pseudo-code
+
+Or search `CAIE Pseudo Code` in Vscode extensions. It currently supports basic keyword highlighting, and can directly run the script in Vscode. More advanced features like grammar checking and debugger are under development.s
 #### Interactive Mode
 Simply execute `PseudoCodeInterpreter.exe` and type in the code.
 
