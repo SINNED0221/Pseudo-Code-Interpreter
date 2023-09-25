@@ -776,6 +776,18 @@ class interpreter:
                 if not leftType in self.pointers.keys() or self.pointers[leftType].type != rightType[1]:
                     self.err.typeErr(lineNo, line, -1, left, rightType[1]+" pointer")
                 rightType = leftType
+            
+            # full array assignment
+            elif left in self.arrays.keys():
+                if right in self.arrays.keys():
+                    if self.arrays[right].returnType() == self.arrays[left].returnType() and self.arrays[right].bounds == self.arrays[left].bounds:
+                        self.arrays[left] == copy.deepcopy(self.arrays[right])
+                        return 0
+                    else:
+                        self.err.invaSyn(lineNo, line, -1, None, "Unmatched array format")
+                else:
+                    self.err.nameErr(lineNo, line, (line.find(right)+len(right))//2, right)
+            
             right = self.getValue (right, lineNo, line, ignoreDate)
             if left in (self.constants).keys():
                 self.err.invaSyn(lineNo, line, (line.find(left)+len(left))//2, None, "A constant is immutable")
@@ -2047,6 +2059,8 @@ class interpreter:
             self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
             return (self.variables[identifier]).returnType()
+        elif identifier in (self.arrays).keys():  # used when the sole name of a array is given used for full array assignment
+            return "ARRAY"
         elif self.isArray(identifier, lineNo, line)[0] == True:
             arr = self.isArray(identifier, lineNo, line)
             return (self.arrays[arr[1]]).returnType()
