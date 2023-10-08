@@ -3,8 +3,26 @@ from datetime import datetime, date
 import re
 import copy
 from settings import *
+from functools import wraps
 
 def printRed(skk): print("\033[91m {}\033[00m" .format(skk))
+
+
+# using a decorator to cache the result of function
+# notice that only the function with no dynamic element can use 
+# does not work well..yet
+# maybe try to clear the cache each line so that more functions can use it?
+def memoize(func):
+    cache = {}
+
+    @wraps(func)
+    def wrapper(*args, **kargs):
+        key = str(args) + str(kargs)
+        
+        if key not in cache:
+            cache[key] = func(*args, **kargs)
+        return cache[key]
+    return wrapper
 
 errorStack = []
 
@@ -198,7 +216,7 @@ class interpreter:
             'SEEK',
             'STEP',
             'STRING',
-            'SUPER',
+            #'SUPER',
             'THEN',
             #'TRUE',
             'TYPE',
@@ -419,6 +437,7 @@ class interpreter:
             return [False, None, None, None]
     
     # check if a string matches the format of date in dd/mm/yyyy
+    @memoize
     def isDate(self, id, lineNo, line):
         if re.match(r'^\d{2}/\d{2}/\d{4}$', id):
             try:
@@ -607,7 +626,7 @@ class interpreter:
         if identifier in (self.constants).keys():
             self.err.invaSyn(lineNo, line, (line.find(identifier)+len(identifier))//2, None, "A constant is immutable")
         elif type != valueType:
-            self.err.typeErr(lineNo, line, (line.find(value)+len(value))//2, value, type)
+            self.err.typeErr(lineNo, line, (line.find(str(value))+len(str(value)))//2, value, type)
         elif identifier in (self.variables).keys():
             self.variables[identifier].value = value
         elif (self.isArray(identifier, lineNo, line))[0] == True:
@@ -1645,6 +1664,7 @@ class interpreter:
 
 ##### Utility functions #####
     
+    @memoize
     def splitBy(self,splitters, expressionWOL, expression):
         tokens = re.split(splitters, expressionWOL)
         precedences = re.findall(splitters, expressionWOL)
@@ -1662,6 +1682,7 @@ class interpreter:
         return exprList
 
     # remove literal values, keep the bounds like quotes, everything removed is replaced by space
+    @memoize
     def removeLiteral(self, token, lineNo, line):
         
         tokenWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
@@ -1734,6 +1755,7 @@ class interpreter:
         return tokenWOLiteral
     
     # split a token by commas in list, not affected by commas in string or other literals
+    @memoize
     def commaSplit(self, expression, lineNo, line):
         if expression == "":
             return []
@@ -2813,3 +2835,47 @@ class record(function):
 
     def injectValue(self, identifier, value):
         self.inter.variables[identifier] = value
+
+class clsDict(dict):
+    def __init__(self, parent, child):
+        self.parent = parent
+        self.child = child
+        self.shadedPId = None
+        self.__initIdList()
+
+    def __initIdList(self):
+        self.idList = self.child.keys()
+        self.idList += (k for k in self.parent.keys if not k in self.child.keys())
+
+
+    def __getitem__(self, __key):
+        if __key in self.child.keys():
+            return self.child[__key]
+        elif __key in self.parent.keys():
+            return self.parent[__key]
+        else:
+            raise KeyError(__key)
+        
+    def __setitem__(self, __key, __value):
+        if __key == self.shadedPId:
+            self.child[__key] = __value
+            self.shadedPId= None
+        elif __key in self.parent.keys():
+            self.parent[__key] = __value
+        else:
+            self.child[__key] = __value
+    
+    
+    def __delitem__(self, __key):
+        if __key in self.child.keys():
+            del self.child[__key]
+        
+        # if the key we want to delete is in global, 
+        # we want to overide the parent key by child key
+        # we put that id shaded to inform next setitem that we want a new child key
+        elif __key in self.parent.keys():
+            self.shadedPId = __key
+        else:
+            raise KeyError(__key)
+    
+
