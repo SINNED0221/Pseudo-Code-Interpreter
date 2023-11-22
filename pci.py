@@ -4,25 +4,106 @@ import re
 import copy
 from settings import *
 from functools import wraps
+from sys import maxsize
 
 def printRed(skk): print("\033[91m {}\033[00m" .format(skk))
 
+digits = "1234567890"
+operators = [
+    "+",
+    "-",
+    "*",
+    "/",
+    "MOD",
+    "DIV"
+]
+logicOperators = [
+    "AND",
+    "OR",
+    "NOT"
+]
+relationOperators = [
+    "<",
+    ">",
+    "<=",
+    ">=",
+    "=",
+    "<>"
+]
+keywords = [
+    'OF',
+    'AND',
+    'APPEND',
+    'ARRAY',
+    'BOOLEAN',
+    'BYREF',
+    'BYVAL',
+    'CALL',
+    'CASE',
+    'CHAR',
+    'CLASS',
+    'CLOSEFILE',
+    'CONSTANT',
+    'DATE',
+    'DECLARE',
+    #'DIV',
+    'ELSE',
+    'ENDCASE',
+    'ENDCLASS',
+    'ENDFUNCTION',
+    'ENDIF',
+    'ENDPROCEDURE',
+    'ENDTYPE',
+    'ENDWHILE',
+    #'EOF',
+    #'FALSE',
+    'FOR',
+    'TO',
+    'FUNCTION',
+    'GETRECORD',
+    'IF',
+    'INHERITS',
+    'INPUT',
+    'INT',
+    'INTEGER',
+    #'LCASE',
+    #'LENGTH',
+    #'MID',
+    #'MOD',
+    'NEXT',
+    'NEW',
+    'NOT',
+    'OPENFILE',
+    'OR',
+    'OTHERWISE',
+    'OUTPUT',
+    'PROCEDURE',
+    'PRIVATE',
+    'PUBLIC',
+    'PUTRECORD',
+    #'RAND',
+    #'RANDOM',
+    'READ',
+    'READFILE',
+    'REAL',
+    'REPEAT',
+    'RETURN',
+    'RETURNS',
+    'RIGHT',
+    'SEEK',
+    'STEP',
+    'STRING',
+    #'SUPER',
+    'THEN',
+    #'TRUE',
+    'TYPE',
+    'UCASE',
+    'UNTIL',
+    'WHILE',
+    'WRITE',
+    'WRITEFILE'
+]
 
-# using a decorator to cache the result of function
-# notice that only the function with no dynamic element can use 
-# does not work well..yet
-# maybe try to clear the cache each line so that more functions can use it?
-def memoize(func):
-    cache = {}
-
-    @wraps(func)
-    def wrapper(*args, **kargs):
-        key = str(args) + str(kargs)
-        
-        if key not in cache:
-            cache[key] = func(*args, **kargs)
-        return cache[key]
-    return wrapper
 
 errorStack = []
 
@@ -131,116 +212,24 @@ class interpreter:
             self.identifiers.append(n)
             self.functions[n] = f
 
-        self.digits = "1234567890"
-        self.operators = [
-            "+",
-            "-",
-            "*",
-            "/",
-            "MOD",
-            "DIV"
-        ]
-        self.logicOperators = [
-            "AND",
-            "OR",
-            "NOT"
-        ]
-        self.relationOperators = [
-            "<",
-            ">",
-            "<=",
-            ">=",
-            "=",
-            "<>"
-        ]
-        self.keywords = [
-            'OF',
-            'AND',
-            'APPEND',
-            'ARRAY',
-            'BOOLEAN',
-            'BYREF',
-            'BYVAL',
-            'CALL',
-            'CASE',
-            'CHAR',
-            'CLASS',
-            'CLOSEFILE',
-            'CONSTANT',
-            'DATE',
-            'DECLARE',
-            #'DIV',
-            'ELSE',
-            'ENDCASE',
-            'ENDCLASS',
-            'ENDFUNCTION',
-            'ENDIF',
-            'ENDPROCEDURE',
-            'ENDTYPE',
-            'ENDWHILE',
-            #'EOF',
-            #'FALSE',
-            'FOR',
-            'TO',
-            'FUNCTION',
-            'GETRECORD',
-            'IF',
-            'INHERITS',
-            'INPUT',
-            'INT',
-            'INTEGER',
-            #'LCASE',
-            #'LENGTH',
-            #'MID',
-            #'MOD',
-            'NEXT',
-            'NEW',
-            'NOT',
-            'OPENFILE',
-            'OR',
-            'OTHERWISE',
-            'OUTPUT',
-            'PROCEDURE',
-            'PRIVATE',
-            'PUBLIC',
-            'PUTRECORD',
-            #'RAND',
-            #'RANDOM',
-            'READ',
-            'READFILE',
-            'REAL',
-            'REPEAT',
-            'RETURN',
-            'RETURNS',
-            'RIGHT',
-            'SEEK',
-            'STEP',
-            'STRING',
-            #'SUPER',
-            'THEN',
-            #'TRUE',
-            'TYPE',
-            'UCASE',
-            'UNTIL',
-            'WHILE',
-            'WRITE',
-            'WRITEFILE'
-        ]
         self.types = [
-                    "INTEGER",
-                    "REAL",
-                    "CHAR",
-                    "STRING",
-                    "BOOLEAN",
-                    "DATE",
-                    "CLASS",
-                    "OBJECT"
-                      ]
+            "INTEGER",
+            "REAL",
+            "CHAR",
+            "STRING",
+            "BOOLEAN",
+            "DATE",
+            "CLASS",
+            "OBJECT"
+              ]
+
 
     def initRun(self, code):
         lines = code.split("\n")
+        if arrowReplace:
+            lines = [line.replace("<-", "←") for line in lines]
         self.run(lines, 1, 1)
-
+        
     # An individual run func will take:
     # lines: A list of string lines with outmost indent removed
     # innitialPos: the postion of the first line in the entire code the first line is 1
@@ -268,8 +257,6 @@ class interpreter:
             return 0
         if line.startswith(" "):
             self.err.indentErr(lineNo, line, -1)
-        if arrowReplace:
-            line = line.replace("<-", "←")
         pos = -1
         identifier = ""
         char = line[0]
@@ -335,7 +322,7 @@ class interpreter:
 
     # To check is a char can be used in an identifier
     def isValidChar(self, id):
-        return id.isalpha() or id in self.digits + "_"
+        return id.isalpha() or id in digits + "_"
 
     # check if a token is a array with indexes. return identifier and indexes in a list
     def isArray(self, identifier, lineNo, line):
@@ -437,7 +424,7 @@ class interpreter:
             return [False, None, None, None]
     
     # check if a string matches the format of date in dd/mm/yyyy
-    @memoize
+    
     def isDate(self, id, lineNo, line):
         if re.match(r'^\d{2}/\d{2}/\d{4}$', id):
             try:
@@ -491,7 +478,7 @@ class interpreter:
                 self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
             elif identifier in self.records.keys():
                 self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
-        elif identifier in (self.keywords or (self.keywords).lower()):
+        elif identifier in (keywords or (keywords).lower()):
             self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
     
     # in func/proc, combine the parameters with global dictionary, keep conflick in a temp dict
@@ -605,12 +592,15 @@ class interpreter:
         identifier = identifier.strip()
         type = self.getType(identifier, lineNo, line)
         value = input()
-        if all(n in self.digits for n in value) or (value.startswith("-") and
-                                                     all(n in self.digits for n in value[1:])):
+        if type == "STRING":
+            value = '"'+value+'"'
+            valueType = "STRING"
+        elif all(n in digits for n in value) or (value.startswith("-") and
+                                                     all(n in digits for n in value[1:])):
             value = int(value)
             valueType = "INTEGER"
-        elif all(n in self.digits+"." for n in value) or (value.startswith("-") and
-                                                     all(n in self.digits+"." for n in value[1:])):
+        elif all(n in digits+"." for n in value) or (value.startswith("-") and
+                                                     all(n in digits+"." for n in value[1:])):
             value = float(value)
             valueType = "REAL"
         elif value in self.enuIds:
@@ -775,13 +765,14 @@ class interpreter:
             
             if right.startswith("NEW"):
                 cls = right[3:].strip()
-                if not self.isClass(cls, lineNo, line)[0]:
-                    self.err.invaSyn(lineNo, line, -1, None, "Invalid format")
-                if not self.getType(cls, lineNo, line) == "CLASS":
-                    self.err.typeErr(lineNo, line, -1, left, "CLASS")
                 clss = self.isClass(cls, lineNo, line)
                 clsName = clss[1]
                 clsArgs = clss[2]
+                if not clss[0]:
+                    self.err.invaSyn(lineNo, line, -1, None, "Invalid format")
+                #if not self.getType(cls, lineNo, line) == "CLASS":
+                #    self.err.typeErr(lineNo, line, -1, left, "CLASS")
+                
                 self.variables[left].value = self.classes[clsName].generateObj(left, clsArgs)
                 return 0
 
@@ -944,7 +935,7 @@ class interpreter:
                     valueEql = False
                     if subLine.find(":") == -1:
                         self.err.invaSyn(lineNo+pos, subLine, -1, None, "Missing colon")
-                    caseStr = subLine[0:subLine.find(":")]
+                    caseStr = subLine[0:subLine.find(":")].strip()
                     caseWOL = self.removeLiteral(caseStr, lineNo+pos, subLine)
                     if "TO" in caseWOL:
                         lower = self.getValue(caseStr[0:caseWOL.find("TO")].strip(), lineNo+pos, subLine)
@@ -1658,13 +1649,13 @@ class interpreter:
 
         self.initId(identifier, lineNo, line)
         self.identifiers.append(identifier)
-        self.classes[identifier] = cls(identifier, lineNo+1, linesToExe, parent, paras)
+        self.classes[identifier] = cls(identifier, lineNo+1, linesToExe, parent, paras, self)
         return skip
 
 
 ##### Utility functions #####
     
-    @memoize
+    
     def splitBy(self,splitters, expressionWOL, expression):
         tokens = re.split(splitters, expressionWOL)
         precedences = re.findall(splitters, expressionWOL)
@@ -1682,7 +1673,7 @@ class interpreter:
         return exprList
 
     # remove literal values, keep the bounds like quotes, everything removed is replaced by space
-    @memoize
+    
     def removeLiteral(self, token, lineNo, line):
         
         tokenWOLiteral = ""  # Remove all string literal to avoid conflict of keywords
@@ -1755,7 +1746,7 @@ class interpreter:
         return tokenWOLiteral
     
     # split a token by commas in list, not affected by commas in string or other literals
-    @memoize
+    
     def commaSplit(self, expression, lineNo, line):
         if expression == "":
             return []
@@ -1783,9 +1774,9 @@ class interpreter:
                     if identifier == v:
                         result = n
 
-        elif any(op in identifierWOLiteral for op in self.logicOperators):
+        elif any(op in identifierWOLiteral for op in logicOperators):
             valid = False
-            for op in self.logicOperators:
+            for op in logicOperators:
                 pos = identifierWOLiteral.find(op)
                 while pos != -1:
                     if ((not self.isValidChar(identifierWOLiteral[pos-1]) or pos-1 == -1) and
@@ -1797,13 +1788,13 @@ class interpreter:
                 result = self.evalLogic(identifier, lineNo, line)
             else:
                 pass
-        elif any(op in identifierWOLiteral for op in self.relationOperators):
+        elif any(op in identifierWOLiteral for op in relationOperators):
             result = self.evalRelation(identifier, lineNo, line)
-        elif any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
+        elif any(op in identifierWOLiteral for op in operators):  # apart from string literal, there is a operator
             valid = False
-            if any (op in identifierWOLiteral for op in self.operators[0:4]):
+            if any (op in identifierWOLiteral for op in operators[0:4]):
                 valid = True
-            for op in self.operators[4:]:
+            for op in operators[4:]:
                 pos = identifierWOLiteral.find(op)
                 while pos != -1:
                     if (not self.isValidChar(identifierWOLiteral[pos-1]) and
@@ -1817,8 +1808,8 @@ class interpreter:
                 pass
         elif "&" in identifierWOLiteral:  # apart from string literal, there is a &
             result = self.strComb(identifier, lineNo, line) 
-        elif all(n in self.digits for n in identifier) or (identifier.startswith("-") and 
-                                                           all(n in self.digits for n in identifier[1:])):  # it is a number
+        elif all(n in digits for n in identifier) or (identifier.startswith("-") and 
+                                                           all(n in digits for n in identifier[1:])):  # it is a number
             if "." in identifier:
                 result = float(identifier)
             result = int(identifier)
@@ -1885,7 +1876,7 @@ class interpreter:
             if attr in self.variables[name].value.inter.procedures.keys():
                  self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, "A procedure has no result = value")
             result = self.variables[name].value.attrValue(attr, args, indexes, lineNo, line)
-        elif identifier in (self.keywords or (self.keywords).lower()):
+        elif identifier in (keywords or (keywords).lower()):
             self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
             result = (self.variables[identifier]).returnValue()
@@ -1910,7 +1901,7 @@ class interpreter:
             func = self.isFunction(identifier, lineNo, line)
             result = (self.functions[func[1]]).returnValue(func[2], lineNo, line)
         elif self.isFunction(identifier, lineNo, line)[0] == "PROC":
-            self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, "A procedure has no result = value")
+            self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, "A procedure has no return value")
         elif self.isFunction(identifier, lineNo, line)[0] == "CLASS":
             self.err.invaSyn(lineNo, line, line.find(identifier)+len(identifier)//2, None, "A class cannot be directly referred")
         elif identifier in ["TRUE", "FALSE"]:
@@ -1971,7 +1962,7 @@ class interpreter:
                 for v in e.values:
                     if identifier == v:
                         return "INTEGER"
-        elif all(n in self.digits+"." for n in identifier):  # it is a number
+        elif all(n in digits+"." for n in identifier):  # it is a number
             if "." in identifier:
                 return "REAL"
             else:
@@ -2010,9 +2001,9 @@ class interpreter:
             return "DATE"
         
         #####expression######
-        if any(op in identifierWOLiteral for op in self.logicOperators):
+        if any(op in identifierWOLiteral for op in logicOperators):
             valid = False
-            for op in self.logicOperators:
+            for op in logicOperators:
                 pos = identifierWOLiteral.find(op)
                 while pos != -1:
                     if ((not self.isValidChar(identifierWOLiteral[pos-1]) or pos-1 == -1) and
@@ -2024,13 +2015,13 @@ class interpreter:
                 return self.getType(self.evalLogic(identifier, lineNo, line), lineNo, line)
             else:
                 pass
-        elif any(op in identifierWOLiteral for op in self.relationOperators):
+        elif any(op in identifierWOLiteral for op in relationOperators):
             return self.getType(self.evalRelation(identifier, lineNo, line), lineNo, line)
-        elif any(op in identifierWOLiteral for op in self.operators):  # apart from string literal, there is a operator
+        elif any(op in identifierWOLiteral for op in operators):  # apart from string literal, there is a operator
             valid = False
-            if any (op in identifierWOLiteral for op in self.operators[0:4]):
+            if any (op in identifierWOLiteral for op in operators[0:4]):
                 valid = True
-            for op in self.operators[4:]:
+            for op in operators[4:]:
                 pos = identifierWOLiteral.find(op)
                 while pos != -1:
                     if (not self.isValidChar(identifierWOLiteral[pos-1]) and
@@ -2077,7 +2068,7 @@ class interpreter:
 
         ###identifiers###
 
-        elif identifier in (self.keywords or (self.keywords).lower()):
+        elif identifier in (keywords or (keywords).lower()):
             self.err.invaSyn(lineNo, line, int((int(line.find(identifier, 7)+len(identifier))/2)), None)
         elif identifier in (self.variables).keys():
             return (self.variables[identifier]).returnType()
@@ -2165,8 +2156,8 @@ class interpreter:
             char = token[0]
             if all(c == " " for c in token):  # Remove any whitespace from the expression
                 pass
-            elif char in self.digits:  # If the character is a digit, accumulate the number
-                if not all(n in self.digits+"." for n in token):
+            elif char in digits:  # If the character is a digit, accumulate the number
+                if not all(n in digits+"." for n in token):
                     self.err.invaSyn(lineNo, line, line.find(token)+len(token)//2, None, "Invalid number")
                 if token.count(".")>1:
                     self.err.invaSyn(lineNo, line, line.find(token)+len(token)//2, None, "Invalid number")
@@ -2187,7 +2178,7 @@ class interpreter:
                         # Apply operators with higher or equal precedence from the stack
                         applyOperator()
                     operatorStack.append(id)
-                elif id in (self.keywords or (self.keywords).lower()):
+                elif id in (keywords or (keywords).lower()):
                     self.err.invaSyn(lineNo, line, int((int(line.index(id)+len(id))/2)), None)
                 else:
                     type = self.getType(id, lineNo, line)
@@ -2206,7 +2197,7 @@ class interpreter:
             elif char in precedence.keys():
 
                 # See if the operator is valid
-                #if not(expression[pos+1] in self.digits or expression[pos+1].isalpha()):
+                #if not(expression[pos+1] in digits or expression[pos+1].isalpha()):
                 #    self.err.invaSyn(lineNo, line, pos+1)
 
                 # If the character is an operator
@@ -2221,7 +2212,7 @@ class interpreter:
             applyOperator()
         return valueStack[0]  # The final value in the value stack is the result
 
-    # evaaluate ligic expression
+    # evaaluate logic expression
     def evalLogic(self, expression, lineNo, line):
 
         expressionWOL = self.removeLiteral(expression, lineNo, line)
@@ -2288,7 +2279,7 @@ class interpreter:
                         applyOperator()
                     operatorStack.append(id)
 
-                elif id in (self.keywords or (self.keywords).lower()):
+                elif id in (keywords or (keywords).lower()):
                     self.err.invaSyn(lineNo, line, int((int(line.index(id)+len(id))/2)), None)
                 elif id in self.variables.keys() or id in self.constants.keys():
                     oprand += id
@@ -2583,6 +2574,27 @@ class procedure(function):
         errorStack.pop()
 
 class clSinter(interpreter):
+    def __init__(self, globalInter):
+        self.error = error()
+
+        self.identifiers = clsList(globalInter.identifiers)
+        self.variables = clsDict(globalInter.variables)
+        self.arrays = clsDict(globalInter.arrays)
+        self.constants = clsDict(globalInter.constants)
+        self.functions = clsDict(globalInter.functions)
+        self.procedures = clsDict(globalInter.procedures)
+        self.variables = clsDict(globalInter.variables)
+        self.files = clsDict(globalInter.files)
+        self.pointers = clsDict(globalInter.pointers)
+        self.enumerateds = clsDict(globalInter.enumerateds)
+        self.enuIds = clsList(globalInter.enuIds)
+        self.records = clsDict(globalInter.records)
+        self.classes = clsDict(globalInter.classes)
+
+        self.types = clsList(globalInter.types)
+
+        self.returnType = None
+
     def executeLine(self, line, lineNo, lines, innitialPos, selfPos):
         if line == "":
             return 0
@@ -2737,12 +2749,12 @@ class clSinter(interpreter):
         return result
 
 class cls:
-    def __init__(self, identifier, initialpos, lines, parent, paras):
+    def __init__(self, identifier, initialpos, lines, parent, paras, globalInter):
         self.identifier = identifier
         self.cls = identifier
         self.lines = lines
         self.initialpos = initialpos
-        self.inter = clSinter()
+        self.inter = clSinter(globalInter)
         self.inter.privateIds = self.inter.identifiers
         self.inter.identifiers.clear()
         self.parent = copy.deepcopy(parent)
@@ -2755,13 +2767,13 @@ class cls:
             self.inter.variables[name] = variable(name, type)
         self.inter.run(lines, initialpos, 1)
         
-        self.pubIds = self.inter.identifiers
-        self.prvIds = self.inter.privateIds
-        self.variables = self.inter.variables
-        self.functions = self.inter.functions
-        self.procedures = self.inter.procedures
-        self.arrays = self.inter.arrays
-        self.constants = self.inter.constants
+        #self.pubIds = self.inter.identifiers
+        #self.prvIds = self.inter.privateIds
+        #self.variables = self.inter.variables
+        #self.functions = self.inter.functions
+        #self.procedures = self.inter.procedures
+        #self.arrays = self.inter.arrays
+        #self.constants = self.inter.constants
     
     def generateObj(self, identifier, args):
         result = copy.deepcopy(self)
@@ -2837,15 +2849,15 @@ class record(function):
         self.inter.variables[identifier] = value
 
 class clsDict(dict):
-    def __init__(self, parent, child):
+    def __init__(self, parent, child = {}):
         self.parent = parent
         self.child = child
         self.shadedPId = None
         self.__initIdList()
 
     def __initIdList(self):
-        self.idList = self.child.keys()
-        self.idList += (k for k in self.parent.keys if not k in self.child.keys())
+        self.idList = list(self.child.keys())
+        self.idList += [k for k in self.parent.keys() if not k in self.child.keys()]
 
 
     def __getitem__(self, __key):
@@ -2864,6 +2876,8 @@ class clsDict(dict):
             self.parent[__key] = __value
         else:
             self.child[__key] = __value
+
+        self.__initIdList()
     
     
     def __delitem__(self, __key):
@@ -2877,5 +2891,52 @@ class clsDict(dict):
             self.shadedPId = __key
         else:
             raise KeyError(__key)
-    
+        
+        self.__initIdList()
+        
+    def __len__(self):
+        return len(self.idList)
 
+    def keys(self):
+        return self.idList
+    
+    def values(self):
+        returnList = []
+        for id in self.idList:
+            if id in self.child.keys():
+                returnList += self.child[id]
+            else:
+                returnList += self.parent[id]
+        
+        return returnList
+    
+class clsList(list):
+    def __init__(self, parent, child = []):
+        self.parent = parent
+        self.child = child
+        self.__initValList()
+    
+    def __initValList(self):
+        self.valList = self.child
+        self.valList += [k for k in self.parent if k not in self.child]
+
+    def __getItem__(self, __s):
+        return self.valList[__s]
+
+    def __setItem__(self, __key, __value):
+        self.valList[__key] = __value
+    
+    def __delItem__(self, __key):
+        self.valList.remove(__key)
+
+    def __contains__(self, __key):
+        return __key in self.valList
+    
+    def append(self, __object):
+        self.valList.append(__object)
+    
+    def index(self, __value, __start = 0, __stop = maxsize):
+        return self.valList.index(__value, __start, __stop)
+    
+    def pop(self, __index = -1):
+        return self.valList.pop(__index)
